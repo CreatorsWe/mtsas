@@ -1,0 +1,104 @@
+package executor
+
+import (
+	"fmt"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+
+	. "github.com/mtsas/common"
+)
+
+type BanditExecutor struct {
+	ToolInfo   // 匿名字段
+	ReportPath string
+}
+
+// 占位符替换
+func (b *BanditExecutor) replaceCommand(tmpdir string, scan_files []string) error {
+	// 替换占位符
+	b.Command = strings.ReplaceAll(b.Command, "{output_file:json}", b.ReportPath)
+	b.Command = strings.ReplaceAll(b.Command, "{scan_files}", strings.Join(scan_files, " "))
+
+	// 检查是否还有未定义占位符
+	if strings.Contains(b.Command, "{") && strings.Contains(b.Command, "}") {
+		// 提取占位符
+		start := strings.Index(b.Command, "{")
+		end := strings.Index(b.Command, "}")
+		if start != -1 && end != -1 && end > start {
+			placeholder := b.Command[start+1 : end]
+			return fmt.Errorf("未定义占位符：%s", placeholder)
+		}
+	}
+	return nil
+}
+
+// NewBanditExecutor 创建新的 BanditExecutor 实例，在初始化时完成命令替换
+func NewBanditExecutor(toolinfo ToolInfo, tmpdir string, scan_files []string) (*BanditExecutor, error) {
+	banditExecutor := &BanditExecutor{
+		ToolInfo: ToolInfo{
+			Name:               toolinfo.Name,
+			Version:            toolinfo.Version,
+			Path:               toolinfo.Path,
+			Command:            toolinfo.Command, // 使用替换后的命令
+			SupportedLanguages: toolinfo.SupportedLanguages,
+		},
+		ReportPath: filepath.Join(tmpdir, fmt.Sprintf("%s_report.json", toolinfo.Name)),
+	}
+
+	// 占位符替换
+	if err := banditExecutor.replaceCommand(tmpdir, scan_files); err != nil {
+		return nil, err
+	}
+	return banditExecutor, nil
+}
+
+// GetToolInfo 返回工具信息
+func (b *BanditExecutor) GetToolInfo() ToolInfo {
+	return b.ToolInfo
+}
+
+// Execute 执行命令（命令已在初始化时替换完成，不需要参数）
+func (b *BanditExecutor) Execute() *ExecutionResult {
+	// 根据操作系统选择合适的 shell 执行命令
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("cmd", "/C", b.Command)
+	} else {
+		cmd = exec.Command("sh", "-c", b.Command)
+	}
+
+	// 执行命令并捕获输出
+	output, err := cmd.CombinedOutput()
+	exitCode := 0
+	success := false
+
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			// 工具正常执行但返回非零退出码
+			exitCode = exitErr.ExitCode()
+			// 根据 bandit 工具特性判断是否算成功
+			success = isExitCodeAcceptable("bandit", exitCode)
+		} else {
+			// 真正的执行错误（命令找不到、权限问题等）
+			exitCode = -1
+			success = false
+		}
+	} else {
+		// 完全成功（退出码为0）
+		exitCode = 0
+		success = true
+	}
+
+	return &ExecutionResult{
+		Success:  success,
+		Output:   output,
+		Error:    err,
+		ExitCode: exitCode,
+	}
+}
+
+func (b *BanditExecutor) GetReportPath() string {
+	return b.ReportPath
+}

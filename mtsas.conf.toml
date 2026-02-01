@@ -1,0 +1,99 @@
+# 底层扫描工具信息
+[pylint]
+name = "pylint"
+version = "4.0.4"
+path = 'D:\Python\Scripts\pylint.exe'  # 可执行文件包装机制
+supportedLanguages = ["python"]
+# environment = "python" # 环境变量寻找
+# environment = {name = "python", path = 'D:\Python\python.exe'}  # 明确路径
+args = [
+    # "--rcfile", 'D:\Code\Project\Multi-tool_Static_Analysis_System_refactor\config\pylint_config.toml',  # 配置文件
+    "--output-format", "json",
+    "--output", "{output_file:json}",
+    "{scan_files}"
+]
+
+
+[bandit]
+name = "bandit"
+version = "1.9.2"
+path = 'D:\Python\Scripts\bandit.exe'
+supportedLanguages = ["python"]
+args = [
+    # "--configfile", 'D:\Code\Project\Multi-tool_Static_Analysis_System_refactor\tool-config\bandit_config.toml',
+    "--format", "json",
+    "--output", "{output_file:json}",
+    "-r", "{scan_files}"
+]
+
+[horusec]
+name = "horusec"
+version = "2.8.0"
+path = 'D:\SAT\horusec.exe'
+supportedLanguages=["python", "java"]
+args = [
+    "start",
+    "--disable-docker",
+    # "--config-file-path", 'D:\Code\Project\Multi-tool_Static_Analysis_System_refactor\tool-config\horusec_config.json',
+    "--output-format", "json",
+    "--json-output-file", "{output_file:json}",
+    "--ignore={exclude_dirs}",
+    "-p", "{target_dir}"
+]
+
+
+[semgrep]
+name = "semgrep"
+version = "1.149.0"
+path = 'D:\Python\Scripts\semgrep.exe'
+supportedLanguages = ["python", "java", "c", "c++"]
+args = [
+    "scan",
+    # "--config", ""
+    "--json-output", "{output_file:json}",
+    "{scan_files}"
+]
+
+
+# [spotbugs]    # 只能扫描 java 编译后的字节码，且只能生成 xml 文件
+# name = "spotbugs"
+# version = "4.9.8"
+# path = 'D:\SAT\spotbugs-4.9.8\bin\spotbugs.bat'
+# supportedLanguages = ["java"]
+# args = [
+#     "-textui",
+#     "-xml",
+#     "-output", "{output_file:xml}",
+#     "{scan_files}"
+# ]
+
+
+[insider]  # 不能指定生成 json 文件的路径，所以只能在指定目录调用工具
+name = "insider"
+version = "3.0.0"
+path = 'D:\SAT\insider.exe'
+supportedLanguages = ["java", "javascript", "c#"]
+args = [
+    "-tech", "{language_type}",
+    "-no-html",
+    "-target", "{scan_files}"
+]
+
+
+[cppcheck]
+name = "cppcheck"
+version = "2.19.0"
+path = 'D:\SAT\cppcheck\cppcheck.exe'
+supportedLanguages = ["c", "c++"]
+args = [
+    "--enable=all",
+    "--output-format=xml",
+    "--output-file={output_file:xml}",
+    "{scan_files}"
+]
+
+
+# cwe 预映射数据库
+[cwe_mapping.pylint]
+path='D:\Code\Project\Multi-tool_Static_Analysis_System_refactor\database\pylint_mapping.sqlite3'
+
