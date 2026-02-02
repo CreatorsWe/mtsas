@@ -6,32 +6,17 @@ import (
 	"os"
 
 	. "github.com/mtsas/common"
-
-	"github.com/mtsas/cweMapper"
 )
 
 type PylintParser struct {
-	parseFilePath string
-	pylintMapper  *cweMapper.PylintMapper
+	parseFilePath  string
+	queryInterface func(string, string) (string, error)
 }
 
-func NewPylintParser(parseFilePath string, pylintCweMappingPath string) (*PylintParser, error) {
-	// 检查 pylintCweMappingPath 是否为空和是否存在
-	if pylintCweMappingPath == "" {
-		return nil, fmt.Errorf("pylintCweMappingPath is empty")
-	}
-	if _, err := os.Stat(pylintCweMappingPath); os.IsNotExist(err) {
-		return nil, fmt.Errorf("pylintCweMappingPath does not exist")
-	}
-	ConsoleLogger.Debug(fmt.Sprintf("pylintCweMappingPath: %s", pylintCweMappingPath))
-	pylintMapper := cweMapper.NewPylintMapper(pylintCweMappingPath)
-	err := pylintMapper.LoadMapping()
-	if err != nil {
-		return nil, err
-	}
+func NewPylintParser(parseFilePath string, query func(string, string) (string, error)) (*PylintParser, error) {
 	return &PylintParser{
-		parseFilePath: parseFilePath,
-		pylintMapper:  pylintMapper,
+		parseFilePath:  parseFilePath,
+		queryInterface: query,
 	}, nil
 }
 
@@ -97,11 +82,7 @@ func pylint_getModule(module string, obj string) string {
 
 // 获取 CWE 字段
 func (p *PylintParser) getCWEID(messageID string) (string, error) {
-	result, err := p.pylintMapper.QueryRecord(messageID)
-	if err != nil {
-		return "", err
-	}
-	return result, nil
+	return p.queryInterface("pylint", messageID)
 }
 
 // ConvertPylintIssueToUnified 将PylintIssue转换为统一漏洞结构体
@@ -152,11 +133,6 @@ func readJsonToPylintIssues(path string) ([]PylintIssue, error) {
 func (p *PylintParser) Parse() ([]UnifiedVulnerability, error) {
 	pylintIssues, err := readJsonToPylintIssues(p.parseFilePath)
 	if err != nil {
-		return nil, err
-	}
-
-	// 加载数据库
-	if err := p.pylintMapper.LoadMapping(); err != nil {
 		return nil, err
 	}
 

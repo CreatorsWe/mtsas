@@ -94,6 +94,12 @@ args = [
 
 
 # cwe 预映射数据库
-[cwe_mapping.pylint]
-path='D:\Code\Project\Multi-tool_Static_Analysis_System_refactor\database\pylint_mapping.sqlite3'
+# [cwe_mapping.pylint]
+# path='D:\Code\Project\Multi-tool_Static_Analysis_System_refactor\database\pylint_mapping.sqlite3'
 
+[cwe_mapping]
+path='D:\Code\Project\Multi-tool_Static_Analysis_System_refactor\database\cwe_mapping.sqlite3'
+maps = [
+    {toolName = "pylint", tableName = "pylint_mapping"},
+    {toolName = "cppcheck", tableName = "cppcheck_mapping"}
+]

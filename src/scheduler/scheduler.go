@@ -2,10 +2,12 @@ package scheduler
 
 import (
 	"fmt"
+	"os"
 	"slices"
 	"sync"
 
 	. "github.com/mtsas/common"
+	"github.com/mtsas/cweMapper"
 	"github.com/mtsas/executor"
 	"github.com/mtsas/fileManager"
 	"github.com/mtsas/parser"
@@ -18,6 +20,7 @@ type Scheduler struct {
 	fileManager     *fileManager.FileManager
 	sysConfigResult *systemConfigParser.SystemConfigResult
 	tools           map[Executor]Parser
+	queryInterface  func(string, string) (string, error)
 }
 
 // NewScheduler 创建调度器
@@ -27,6 +30,7 @@ func NewScheduler(flagResult *ScanFlag, sysConfigResult *systemConfigParser.Syst
 		fileManager:     nil,
 		sysConfigResult: sysConfigResult,
 		tools:           nil,
+		queryInterface:  nil,
 	}
 }
 
@@ -44,11 +48,20 @@ func (s *Scheduler) Init() error {
 }
 
 func (s *Scheduler) Scheduler() {
+	// 初始化 CWE 映射器
+	cweMapper, err := cweMapper.NewCWEMapper(s.sysConfigResult.CweMapping.Path, s.sysConfigResult.CweMapping.Maps)
+	if err != nil {
+		ConsoleLogger.Error(err.Error())
+		os.Exit(0)
+	}
+
+	s.queryInterface = cweMapper.QueryRecord
+
 	// 1. 调用 getTools 获取工具
 	if err := s.getTools(); err != nil {
 		ConsoleLogger.Error(err.Error())
+		os.Exit(0)
 	}
-
 	// 2. 并行执行工具
 	var unifiedVulnerabilities []UnifiedVulnerability
 	var wg sync.WaitGroup
@@ -157,9 +170,11 @@ func (s *Scheduler) initExecutorAndParser(toolName string, paths []string) (Exec
 
 		// 获取 pylint cwe 映射数据库的地址
 		ConsoleLogger.Debug(fmt.Sprintf("systemConfigReuslt.CweMapping: %+v", s.sysConfigResult.CweMapping))
-		cwe_db_path := s.sysConfigResult.CweMapping["pylint"]
 		// 初始化 parser
-		pylintParser, err := parser.NewPylintParser(report_path, cwe_db_path)
+		if s.queryInterface == nil {
+			return nil, nil, fmt.Errorf("pylintparser 需要 cwe 预映射库查询接口")
+		}
+		pylintParser, err := parser.NewPylintParser(report_path, s.queryInterface)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -228,7 +243,10 @@ func (s *Scheduler) initExecutorAndParser(toolName string, paths []string) (Exec
 			return nil, nil, err
 		}
 		report_path := cppcheckExecutor.GetReportPath()
-		cppcheckParser := parser.NewCppcheckParser(report_path)
+		if s.queryInterface == nil {
+			return nil, nil, fmt.Errorf("cppcheckparser 需要 cwe 预映射库查询接口")
+		}
+		cppcheckParser := parser.NewCppcheckParser(report_path, s.queryInterface)
 
 		return cppcheckExecutor, cppcheckParser, nil
 	default:

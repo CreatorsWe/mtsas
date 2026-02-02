@@ -11,12 +11,14 @@ import (
 )
 
 type CppcheckParser struct {
-	parseFilePath string
+	parseFilePath  string
+	queryInterface func(string, string) (string, error)
 }
 
-func NewCppcheckParser(parseFilePath string) *CppcheckParser {
+func NewCppcheckParser(parseFilePath string, queryInterface func(string, string) (string, error)) *CppcheckParser {
 	return &CppcheckParser{
-		parseFilePath: parseFilePath,
+		parseFilePath:  parseFilePath,
+		queryInterface: queryInterface,
 	}
 }
 
@@ -106,8 +108,13 @@ func (c *CppcheckParser) getCategory(errorID string, severity string) string {
 	}
 }
 
+// 获取 cwe 字段
+func (c *CppcheckParser) getCWE(errorID string) (string, error) {
+	return c.queryInterface("cppcheck", errorID)
+}
+
 // 转换 Cppcheck 错误为统一漏洞格式
-func (c *CppcheckParser) convertToUnified(errorObj CppcheckError) UnifiedVulnerability {
+func (c *CppcheckParser) convertToUnified(errorObj CppcheckError) (UnifiedVulnerability, error) {
 	// 构建范围信息
 	vulnRange := Range{
 		StartLine:   NullableInt(errorObj.Location.Line),
@@ -134,6 +141,13 @@ func (c *CppcheckParser) convertToUnified(errorObj CppcheckError) UnifiedVulnera
 
 	// 处理 CWE 字段
 	cweID := errorObj.CWE
+	var err error
+	if cweID == "" {
+		cweID, err = c.getCWE(errorObj.ID)
+		if err != nil {
+			return UnifiedVulnerability{}, err
+		}
+	}
 
 	return UnifiedVulnerability{
 		Tool:            "cppcheck",
@@ -147,7 +161,7 @@ func (c *CppcheckParser) convertToUnified(errorObj CppcheckError) UnifiedVulnera
 		Range:           vulnRange,
 		SeverityLevel:   severityLevel,
 		ConfidenceLevel: confidenceLevel,
-	}
+	}, nil
 }
 
 // 读取并解析XML文件
@@ -193,7 +207,10 @@ func (c *CppcheckParser) Parse() ([]UnifiedVulnerability, error) {
 	// 转换为统一格式
 	var unifiedVulns []UnifiedVulnerability
 	for _, errorObj := range filteredErrors {
-		unifiedVuln := c.convertToUnified(errorObj)
+		unifiedVuln, err := c.convertToUnified(errorObj)
+		if err != nil {
+			return nil, err
+		}
 		unifiedVulns = append(unifiedVulns, unifiedVuln)
 	}
 

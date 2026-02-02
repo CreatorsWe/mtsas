@@ -9,7 +9,7 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
-// tool 结构体定义，使用 toml 标签
+// 将结构体改为非导出（首字母小写）
 type tool struct {
 	Name               string   `toml:"name"`
 	Version            string   `toml:"version"`
@@ -19,22 +19,37 @@ type tool struct {
 }
 
 func (t *tool) checkNotEmpty() error {
-	err := fmt.Errorf("系统配置文件工具信息 name、version、supportedLanguages、args 不能为空")
 	if t.Name == "" || t.Version == "" || len(t.SupportedLanguages) == 0 || len(t.Args) == 0 {
-		return err
+		return fmt.Errorf("系统配置文件工具信息 name、version、supportedLanguages、args 不能为空")
 	}
 	return nil
 }
 
 // cweMapping 结构体定义
-type cweMapping struct {
+type _cweMapping struct {
 	Path string `toml:"path"`
+	Maps []struct {
+		ToolName  string `toml:"toolName"`
+		TableName string `toml:"tableName"`
+	} `toml:"maps"`
+}
+
+type CWEMapping struct {
+	Path string
+	Maps map[string]string
+}
+
+// 添加构造函数
+func NewCWEMapping() CWEMapping {
+	return CWEMapping{
+		Maps: make(map[string]string),
+	}
 }
 
 // SystemConfigResult 结构体定义
 type SystemConfigResult struct {
 	Tools      map[string]ToolInfo `toml:"-"` // 不使用 toml 标签，手动解析
-	CweMapping map[string]string   `toml:"-"` // CWE 映射配置
+	CweMapping CWEMapping          `toml:"-"` // CWE 映射配置
 }
 
 // SystemConfigParser 结构体定义
@@ -70,14 +85,13 @@ func (s *SystemConfigParser) Parse() (*SystemConfigResult, error) {
 }
 
 // parseTOMLContent 解析 TOML 内容
-// parseTOMLContent 解析 TOML 内容
 func (s *SystemConfigParser) parseTOMLContent(content []byte) (*SystemConfigResult, error) {
 	result := &SystemConfigResult{
 		Tools:      make(map[string]ToolInfo),
-		CweMapping: make(map[string]string),
+		CweMapping: NewCWEMapping(),
 	}
 
-	// 使用正确的嵌套结构来解析 TOML
+	// 使用新的结构来解析 TOML
 	var config struct {
 		// 工具配置
 		Pylint   *tool `toml:"pylint"`
@@ -87,12 +101,8 @@ func (s *SystemConfigParser) parseTOMLContent(content []byte) (*SystemConfigResu
 		Insider  *tool `toml:"insider"`
 		Cppcheck *tool `toml:"cppcheck"`
 
-		// CWE 映射配置 - 使用嵌套结构
-		CweMapping struct {
-			Pylint struct {
-				Path string `toml:"path"`
-			} `toml:"pylint"`
-		} `toml:"cwe_mapping"`
+		// CWE 映射配置 - 新的扁平结构
+		CweMapping *_cweMapping `toml:"cwe_mapping"`
 	}
 
 	if err := toml.Unmarshal(content, &config); err != nil {
@@ -105,8 +115,8 @@ func (s *SystemConfigParser) parseTOMLContent(content []byte) (*SystemConfigResu
 	}
 
 	// 解析 CWE 映射配置
-	if config.CweMapping.Pylint.Path != "" {
-		result.CweMapping["pylint"] = config.CweMapping.Pylint.Path
+	if err := s.parseCweMapping(config.CweMapping, result); err != nil {
+		return nil, err
 	}
 
 	return result, nil
@@ -114,17 +124,13 @@ func (s *SystemConfigParser) parseTOMLContent(content []byte) (*SystemConfigResu
 
 // parseTools 解析所有工具配置
 func (s *SystemConfigParser) parseTools(config *struct {
-	Pylint     *tool `toml:"pylint"`
-	Bandit     *tool `toml:"bandit"`
-	Horusec    *tool `toml:"horusec"`
-	Semgrep    *tool `toml:"semgrep"`
-	Insider    *tool `toml:"insider"`
-	Cppcheck   *tool `toml:"cppcheck"`
-	CweMapping struct {
-		Pylint struct {
-			Path string `toml:"path"`
-		} `toml:"pylint"`
-	} `toml:"cwe_mapping"`
+	Pylint     *tool        `toml:"pylint"`
+	Bandit     *tool        `toml:"bandit"`
+	Horusec    *tool        `toml:"horusec"`
+	Semgrep    *tool        `toml:"semgrep"`
+	Insider    *tool        `toml:"insider"`
+	Cppcheck   *tool        `toml:"cppcheck"`
+	CweMapping *_cweMapping `toml:"cwe_mapping"`
 }, result *SystemConfigResult) error {
 
 	// 解析每个工具
@@ -144,6 +150,30 @@ func (s *SystemConfigParser) parseTools(config *struct {
 
 		if err := s.parseSingleTool(toolName, toolConfig, result); err != nil {
 			return err
+		}
+	}
+
+	return nil
+}
+
+// parseCweMapping 解析 CWE 映射配置
+func (s *SystemConfigParser) parseCweMapping(cweConfig *_cweMapping, result *SystemConfigResult) error {
+	if cweConfig == nil {
+		return nil // 没有 CWE 映射配置
+	}
+
+	// 检查路径是否存在
+	if cweConfig.Path == "" {
+		return fmt.Errorf("CWE 映射数据库路径为空")
+	}
+
+	result.CweMapping.Path = cweConfig.Path
+
+	// 将映射信息存储到结果中
+	for _, mapping := range cweConfig.Maps {
+		if mapping.ToolName != "" && mapping.TableName != "" {
+			// 存储格式: "toolName:tableName"
+			result.CweMapping.Maps[mapping.ToolName] = mapping.TableName
 		}
 	}
 
@@ -217,4 +247,55 @@ func (s *SystemConfigParser) mapStringToLanguage(langStr string) Language {
 	default:
 		return LanguageUnknown
 	}
+}
+
+// GetCweMapping 获取指定工具的 CWE 映射信息
+func (s *SystemConfigParser) GetCweMapping(toolName string) (string, string, error) {
+	result, err := s.Parse()
+	if err != nil {
+		return "", "", err
+	}
+
+	mapping, exists := result.CweMapping.Maps[toolName]
+	if !exists {
+		return "", "", fmt.Errorf("未找到工具 %s 的 CWE 映射配置", toolName)
+	}
+
+	// 解析映射格式: "path:tableName"
+	parts := strings.Split(mapping, ":")
+	if len(parts) != 2 {
+		return "", "", fmt.Errorf("CWE 映射格式错误: %s", mapping)
+	}
+
+	return parts[0], parts[1], nil
+}
+
+// GetToolNames 获取所有工具名称
+func (s *SystemConfigParser) GetToolNames() ([]string, error) {
+	result, err := s.Parse()
+	if err != nil {
+		return nil, err
+	}
+
+	names := make([]string, 0, len(result.Tools))
+	for name := range result.Tools {
+		names = append(names, name)
+	}
+
+	return names, nil
+}
+
+// GetSupportedLanguages 获取指定工具支持的语言
+func (s *SystemConfigParser) GetSupportedLanguages(toolName string) ([]Language, error) {
+	result, err := s.Parse()
+	if err != nil {
+		return nil, err
+	}
+
+	tool, exists := result.Tools[toolName]
+	if !exists {
+		return nil, fmt.Errorf("工具 %s 不存在", toolName)
+	}
+
+	return tool.SupportedLanguages, nil
 }

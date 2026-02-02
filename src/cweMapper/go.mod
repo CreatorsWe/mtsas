@@ -2,12 +2,20 @@ module github.com/mtsas/cweMapper
 
 go 1.25.5
 
-require modernc.org/sqlite v1.44.3
+replace github.com/mtsas/common => ../common
+
+replace github.com/mtsas/logger => ../logger
+
+require (
+	github.com/mtsas/common v0.0.0-00010101000000-000000000000
+	modernc.org/sqlite v1.44.3
+)
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/mtsas/logger v0.0.0-00010101000000-000000000000 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546 // indirect
