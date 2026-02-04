@@ -10,3 +10,10 @@ type ScanFlag struct {
 	ProjectConfig string                // 项目配置文件，toml 格式，简化命令行的繁琐
 	IsQuiet       bool                  // 是否静默模式(控制台不输出除 Error 外的任何信息)
 }
+
+type VisualFlag struct {
+	ProjectName string
+	OutputDir   string
+}
+
+type MapFlag struct{}

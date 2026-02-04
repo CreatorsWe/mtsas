@@ -9,24 +9,25 @@ import (
 	. "github.com/mtsas/common"
 )
 
-type BanditIssue struct {
-	BanditResult []BanditResult `json:"results"`
+// 表示是 banditIssues 的外层结构
+type o_banditIssues struct {
+	Banditissues []banditIssues `json:"results"`
 }
 
-type BanditResult struct {
+type banditIssues struct {
 	TestID          string        `json:"test_id"`
 	TestName        string        `json:"test_name"`
 	IssueText       string        `json:"issue_text"`
 	Filename        string        `json:"filename"`
 	ColOffset       NullableInt   `json:"col_offset"`
 	EndColOffset    NullableInt   `json:"end_col_offset"`
-	IssueCwe        BanditCwe     `json:"issue_cwe"`
+	IssueCwe        banditCwe     `json:"issue_cwe"`
 	IssueSeverity   string        `json:"issue_severity"`
 	IssueConfidence string        `json:"issue_confidence"`
 	Linerange       []NullableInt `json:"line_range"`
 }
 
-type BanditCwe struct {
+type banditCwe struct {
 	ID int `json:"id"`
 }
 
@@ -40,22 +41,23 @@ func NewBanditParser(parseFilePath string) *BanditParser {
 	}
 }
 
-func readJsonToBanditResults(path string) ([]BanditResult, error) {
+// 返回 issuesMiddle
+func (b *BanditParser) readReportToIssues(path string) ([]banditIssues, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("读取文件失败: %v", err)
 	}
 
-	var banditIssues BanditIssue
-	err = json.Unmarshal(data, &banditIssues)
+	var o_banditIssues o_banditIssues
+	err = json.Unmarshal(data, &o_banditIssues)
 	if err != nil {
 		return nil, fmt.Errorf("解析JSON失败: %v", err)
 	}
 
-	return banditIssues.BanditResult, nil
+	return o_banditIssues.Banditissues, nil
 }
 
-func bandit_getSeverityLevel(severity string) SeverityLevel {
+func (b *BanditParser) getSeverityLevel(severity string) SeverityLevel {
 	switch severity {
 	case "LOW":
 		return SeverityLevelLow
@@ -68,7 +70,7 @@ func bandit_getSeverityLevel(severity string) SeverityLevel {
 	}
 }
 
-func bandit_getConfidenceLevel(confidence string) ConfidenceLevel {
+func (b *BanditParser) getConfidenceLevel(confidence string) ConfidenceLevel {
 	switch confidence {
 	case "LOW":
 		return ConfidenceLevelLow
@@ -81,7 +83,7 @@ func bandit_getConfidenceLevel(confidence string) ConfidenceLevel {
 	}
 }
 
-func bandit_getLineRange(line_range []NullableInt) (start_line, end_line NullableInt) {
+func (b *BanditParser) getLineRange(line_range []NullableInt) (start_line, end_line NullableInt) {
 	if len(line_range) == 1 {
 		return line_range[0], -1
 	} else if len(line_range) == 2 {
@@ -91,13 +93,12 @@ func bandit_getLineRange(line_range []NullableInt) (start_line, end_line Nullabl
 	}
 }
 
-func convertBanditResultToUnified(result BanditResult) UnifiedVulnerability {
-	start_line, end_line := bandit_getLineRange(result.Linerange)
+func (b *BanditParser) convertIssuesToUnified(result banditIssues) UnifiedVulnerability {
+	start_line, end_line := b.getLineRange(result.Linerange)
 
 	return UnifiedVulnerability{
 		Tool:         "bandit",
 		WarningID:    result.TestID,
-		WarningType:  result.TestName,
 		Category:     "",
 		ShortMessage: result.IssueText,
 		FilePath:     result.Filename,
@@ -108,24 +109,40 @@ func convertBanditResultToUnified(result BanditResult) UnifiedVulnerability {
 			EndColumn:   result.EndColOffset,
 		},
 		CWEID:           strconv.Itoa(result.IssueCwe.ID),
-		SeverityLevel:   bandit_getSeverityLevel(result.IssueSeverity),
-		ConfidenceLevel: bandit_getConfidenceLevel(result.IssueConfidence),
+		SeverityLevel:   b.getSeverityLevel(result.IssueSeverity),
+		ConfidenceLevel: b.getConfidenceLevel(result.IssueConfidence),
 		Module:          "",
 	}
 }
 
-func (p *BanditParser) Parse() ([]UnifiedVulnerability, error) {
-	banditresults, err := readJsonToBanditResults(p.parseFilePath)
+func (b *BanditParser) Parse() ([]UnifiedVulnerability, error) {
+	banditresults, err := b.readReportToIssues(b.parseFilePath)
 	if err != nil {
 		return nil, err
 	}
 	var unifiedVulnerabilities []UnifiedVulnerability
 	for _, vulnerability := range banditresults {
-		unifiedVulnerabilities = append(unifiedVulnerabilities, convertBanditResultToUnified(vulnerability))
+		unifiedVulnerabilities = append(unifiedVulnerabilities, b.convertIssuesToUnified(vulnerability))
 	}
 	return unifiedVulnerabilities, nil
 }
 
 func (p *BanditParser) GetName() string {
 	return "banditParser"
+}
+
+func (b *BanditParser) ParseToFile(output_file string) error {
+	banditresults, err := b.readReportToIssues(b.parseFilePath)
+	if err != nil {
+		return err
+	}
+	var unifiedVulnerabilities []UnifiedVulnerability
+	for _, vulnerability := range banditresults {
+		unifiedVulnerabilities = append(unifiedVulnerabilities, b.convertIssuesToUnified(vulnerability))
+	}
+
+	if err := StructsToJSONFile(unifiedVulnerabilities, output_file); err != nil {
+		return err
+	}
+	return nil
 }

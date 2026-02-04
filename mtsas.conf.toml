@@ -26,11 +26,13 @@ args = [
     "-r", "{scan_files}"
 ]
 
+
+# C#, Java, Kotlin, Python, Ruby, Golang, Terraform, Javascript, Typescript, Kubernetes, PHP, C, HTML, JSON, Dart, Elixir, Shell, Nginx.
 [horusec]
 name = "horusec"
 version = "2.8.0"
 path = 'D:\SAT\horusec.exe'
-supportedLanguages=["python", "java"]
+supportedLanguages=["python", "java", "Kotlin", "c#", "javascript", "typescript", "c", "ruby"]
 args = [
     "start",
     "--disable-docker",
@@ -41,15 +43,18 @@ args = [
     "-p", "{target_dir}"
 ]
 
-
+# · C · C++ · C# · Clojure · Dart · Dockerfile · Elixir · HTML · Go · Java · JavaScript · JSX ·
+# JSON · Julia · Jsonnet · Kotlin · Lisp · Lua · OCaml · PHP · Python · R · Ruby · Rust · Scala ·
+# Scheme · Solidity · Swift · Terraform · TypeScript · TSX · YAML · XML · Generic (ERB, Jinja, etc.)
 [semgrep]
 name = "semgrep"
 version = "1.149.0"
 path = 'D:\Python\Scripts\semgrep.exe'
-supportedLanguages = ["python", "java", "c", "c++"]
+supportedLanguages = ["python", "java", "c", "c++", "c#", "kotlin", "javascript", "typescript", "ruby"]
 args = [
     "scan",
     # "--config", ""
+    "--quiet",
     "--json-output", "{output_file:json}",
     "{scan_files}"
 ]
@@ -62,17 +67,19 @@ args = [
 # supportedLanguages = ["java"]
 # args = [
 #     "-textui",
+#     "-sourcepath", "{source_dir}",
 #     "-xml",
 #     "-output", "{output_file:xml}",
 #     "{scan_files}"
 # ]
 
 
+# Java (Maven and Android), Kotlin (Android), Swift (iOS), .NET Full Framework, C#, and Javascript (Node.js)
 [insider]  # 不能指定生成 json 文件的路径，所以只能在指定目录调用工具
 name = "insider"
 version = "3.0.0"
 path = 'D:\SAT\insider.exe'
-supportedLanguages = ["java", "javascript", "c#"]
+supportedLanguages = ["java", "kotlin", "javascript", "c#"]
 args = [
     "-tech", "{language_type}",
     "-no-html",
@@ -93,9 +100,6 @@ args = [
 ]
 
 
-# cwe 预映射数据库
-# [cwe_mapping.pylint]
-# path='D:\Code\Project\Multi-tool_Static_Analysis_System_refactor\database\pylint_mapping.sqlite3'
 
 [cwe_mapping]
 path='D:\Code\Project\Multi-tool_Static_Analysis_System_refactor\database\cwe_mapping.sqlite3'

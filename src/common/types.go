@@ -104,7 +104,6 @@ const (
 type UnifiedVulnerability struct {
 	Tool            string          `json:"tool"`
 	WarningID       string          `json:"warning_id"`
-	WarningType     string          `json:"warning_type"`
 	Category        string          `json:"category"`
 	ShortMessage    string          `json:"short_messgae"` // 保持你指定的字段名（注意拼写）
 	CWEID           string          `json:"cwe_id"`        // 无值则为null
@@ -123,7 +122,7 @@ const (
 	LanguageJava    Language = "java"
 	LanguagePython  Language = "python"
 	LanguageC       Language = "c"
-	LanguageCsharp  Language = "csharp"
+	LanguageCsharp  Language = "c#"
 	LanguageCpp     Language = "cpp"
 	LanguageKotlin  Language = "kotlin"
 	LanguageJs      Language = "javascript"

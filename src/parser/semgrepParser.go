@@ -20,7 +20,7 @@ func NewSemgrepParser(parseFilePath string) *SemgrepParser {
 }
 
 // SemgrepIssue 定义 Semgrep JSON 报告的结构体
-type SemgrepIssue struct {
+type semgrepIssues struct {
 	CheckID string `json:"check_id"`
 	Path    string `json:"path"`
 	Start   struct {
@@ -64,86 +64,8 @@ type SemgrepIssue struct {
 }
 
 // SemgrepReport 完整的 Semgrep 报告结构
-type SemgrepReport struct {
-	Version string         `json:"version"`
-	Results []SemgrepIssue `json:"results"`
-	Errors  []any          `json:"errors"`
-	Paths   struct {
-		Scanned []string `json:"scanned"`
-	} `json:"paths"`
-	Time struct {
-		Rules          []any   `json:"rules"`
-		RulesParseTime float64 `json:"rules_parse_time"`
-		ProfilingTimes struct {
-			ConfigTime  float64 `json:"config_time"`
-			CoreTime    float64 `json:"core_time"`
-			IgnoresTime float64 `json:"ignores_time"`
-			TotalTime   float64 `json:"total_time"`
-		} `json:"profiling_times"`
-		ParsingTime struct {
-			TotalTime   float64 `json:"total_time"`
-			PerFileTime struct {
-				Mean   float64 `json:"mean"`
-				StdDev float64 `json:"std_dev"`
-			} `json:"per_file_time"`
-			VerySlowStats struct {
-				TimeRatio  float64 `json:"time_ratio"`
-				CountRatio float64 `json:"count_ratio"`
-			} `json:"very_slow_stats"`
-			VerySlowFiles []any `json:"very_slow_files"`
-		} `json:"parsing_time"`
-		ScanningTime struct {
-			TotalTime   float64 `json:"total_time"`
-			PerFileTime struct {
-				Mean   float64 `json:"mean"`
-				StdDev float64 `json:"std_dev"`
-			} `json:"per_file_time"`
-			VerySlowStats struct {
-				TimeRatio  float64 `json:"time_ratio"`
-				CountRatio float64 `json:"count_ratio"`
-			} `json:"very_slow_stats"`
-			VerySlowFiles []any `json:"very_slow_files"`
-		} `json:"scanning_time"`
-		MatchingTime struct {
-			TotalTime          float64 `json:"total_time"`
-			PerFileAndRuleTime struct {
-				Mean   float64 `json:"mean"`
-				StdDev float64 `json:"std_dev"`
-			} `json:"per_file_and_rule_time"`
-			VerySlowStats struct {
-				TimeRatio  float64 `json:"time_ratio"`
-				CountRatio float64 `json:"count_ratio"`
-			} `json:"very_slow_stats"`
-			VerySlowRulesOnFiles []any `json:"very_slow_rules_on_files"`
-		} `json:"matching_time"`
-		TaintingTime struct {
-			TotalTime         float64 `json:"total_time"`
-			PerDefAndRuleTime struct {
-				Mean   float64 `json:"mean"`
-				StdDev float64 `json:"std_dev"`
-			} `json:"per_def_and_rule_time"`
-			VerySlowStats struct {
-				TimeRatio  float64 `json:"time_ratio"`
-				CountRatio float64 `json:"count_ratio"`
-			} `json:"very_slow_stats"`
-			VerySlowRulesOnDefs []any `json:"very_slow_rules_on_defs"`
-		} `json:"tainting_time"`
-		FixpointTimeouts []any `json:"fixpoint_timeouts"`
-		Prefiltering     struct {
-			ProjectLevelTime                float64 `json:"project_level_time"`
-			FileLevelTime                   float64 `json:"file_level_time"`
-			RulesWithProjectPrefiltersRatio float64 `json:"rules_with_project_prefilters_ratio"`
-			RulesWithFilePrefiltersRatio    float64 `json:"rules_with_file_prefilters_ratio"`
-			RulesSelectedRatio              float64 `json:"rules_selected_ratio"`
-			RulesMatchedRatio               float64 `json:"rules_matched_ratio"`
-		} `json:"prefiltering"`
-		Targets        []any `json:"targets"`
-		TotalBytes     int   `json:"total_bytes"`
-		MaxMemoryBytes int   `json:"max_memory_bytes"`
-	} `json:"time"`
-	EngineRequested  string `json:"engine_requested"`
-	SkippedRules     []any  `json:"skipped_rules"`
-	ProfilingResults []any  `json:"profiling_results"`
+type o_semgrepIssues struct {
+	Semgrepissues []semgrepIssues `json:"results"`
 }
 
 // 将 Semgrep severity 字段映射为 unified severity_level 字段
@@ -179,7 +101,7 @@ func (s *SemgrepParser) getConfidenceLevel(confidence string) ConfidenceLevel {
 // }
 
 // 从 cwe 数组获取 CWE 字段
-func (p *SemgrepParser) getCWEID(cweList []string) string {
+func (s *SemgrepParser) getCWEID(cweList []string) string {
 	if len(cweList) == 0 {
 		return "" // 返回空字符串，序列化时会变成null
 	}
@@ -203,7 +125,7 @@ func (p *SemgrepParser) getCWEID(cweList []string) string {
 }
 
 // ConvertSemgrepIssueToUnified 将 SemgrepIssue 转换为统一漏洞结构体
-func (p *SemgrepParser) convertSemgrepIssueToUnified(issue SemgrepIssue) UnifiedVulnerability {
+func (s *SemgrepParser) convertIssuesToUnified(issue semgrepIssues) UnifiedVulnerability {
 	// 构建Range结构
 	vulnRange := Range{
 		StartLine:   NullableInt(issue.Start.Line),
@@ -213,11 +135,11 @@ func (p *SemgrepParser) convertSemgrepIssueToUnified(issue SemgrepIssue) Unified
 	}
 
 	// 获取严重级别和置信度
-	severityLevel := p.getSeverityLevel(issue.Extra.Severity)
-	confidenceLevel := p.getConfidenceLevel(issue.Extra.Metadata.Confidence)
+	severityLevel := s.getSeverityLevel(issue.Extra.Severity)
+	confidenceLevel := s.getConfidenceLevel(issue.Extra.Metadata.Confidence)
 
 	// 获取CWE ID
-	cweID := p.getCWEID(issue.Extra.Metadata.Cwe)
+	cweID := s.getCWEID(issue.Extra.Metadata.Cwe)
 
 	// 获取模块信息
 	// module := p.getModule(issue.Path, issue.CheckID)
@@ -225,7 +147,6 @@ func (p *SemgrepParser) convertSemgrepIssueToUnified(issue SemgrepIssue) Unified
 	return UnifiedVulnerability{
 		Tool:            "semgrep",
 		WarningID:       issue.CheckID,
-		WarningType:     issue.CheckID,
 		Category:        issue.Extra.Metadata.Category,
 		ShortMessage:    issue.Extra.Message,
 		CWEID:           cweID,
@@ -238,32 +159,32 @@ func (p *SemgrepParser) convertSemgrepIssueToUnified(issue SemgrepIssue) Unified
 }
 
 // readJsonToSemgrepReport 读取JSON文件并解析为SemgrepReport
-func readJsonToSemgrepReport(path string) (*SemgrepReport, error) {
+func (s *SemgrepParser) readReportToIssues(path string) ([]semgrepIssues, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("读取文件失败: %v", err)
 	}
 
-	var report SemgrepReport
+	var report o_semgrepIssues
 	err = json.Unmarshal(data, &report)
 	if err != nil {
 		return nil, fmt.Errorf("解析JSON失败: %v", err)
 	}
 
-	return &report, nil
+	return report.Semgrepissues, nil
 }
 
-func (p *SemgrepParser) Parse() ([]UnifiedVulnerability, error) {
+func (s *SemgrepParser) Parse() ([]UnifiedVulnerability, error) {
 	// 读取并解析Semgrep报告
-	report, err := readJsonToSemgrepReport(p.parseFilePath)
+	report, err := s.readReportToIssues(s.parseFilePath)
 	if err != nil {
 		return nil, fmt.Errorf("解析Semgrep报告失败: %v", err)
 	}
 
 	// 转换每个结果为统一格式
 	var unifiedVulns []UnifiedVulnerability
-	for _, issue := range report.Results {
-		unifiedVuln := p.convertSemgrepIssueToUnified(issue)
+	for _, issue := range report {
+		unifiedVuln := s.convertIssuesToUnified(issue)
 		unifiedVulns = append(unifiedVulns, unifiedVuln)
 	}
 
@@ -272,4 +193,24 @@ func (p *SemgrepParser) Parse() ([]UnifiedVulnerability, error) {
 
 func (p *SemgrepParser) GetName() string {
 	return "semgrepParser"
+}
+
+func (s *SemgrepParser) ParseToFile(output_file string) error {
+	// 读取并解析Semgrep报告
+	report, err := s.readReportToIssues(s.parseFilePath)
+	if err != nil {
+		return err
+	}
+
+	// 转换每个结果为统一格式
+	var unifiedVulns []UnifiedVulnerability
+	for _, issue := range report {
+		unifiedVuln := s.convertIssuesToUnified(issue)
+		unifiedVulns = append(unifiedVulns, unifiedVuln)
+	}
+
+	if err := StructsToJSONFile(unifiedVulns, output_file); err != nil {
+		return err
+	}
+	return nil
 }

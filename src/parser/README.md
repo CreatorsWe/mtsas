@@ -1,246 +1,243 @@
-`parser` 将各工具的 json 报告格式化成统一的 json 结构:
-```json
-[
-  {
-  	"tool": 工具名称,
-  	"warning_id": 工具标识的警告 ID,
-    "warning_type": 工具标识的警告类型,
-  	"category": 工具标识的警告种类，
-  	"short_message": 工具标识的警告信息，
-    "cwe_id": CWE 编号，
-  	"file_path": 文件路径,
-  	"module": 错误所属完整模块,
-  	"range": {
-  		"start_line": 起始行,
-  		"end_line": 结束行，
-  		"start_column": 起始偏移,
-  		"end_column": 结束偏移
-  	},
-  	"severity_level": 严重性等级,
-  	"confidence_level": 置信度等级
-  }
-]
+## `UnifiedVulerability`
+
+解析器 parser 读取工具输出的 `json/xml/sarif` 报告将其反序列化成统一的 `UnifiedVulerability` 结构：
+
+```go
+type UnifiedVulnerability struct {
+	Tool            string          `json:"tool"`
+	WarningID       string          `json:"warning_id"`
+	Category        string          `json:"category"`
+	ShortMessage    string          `json:"short_messgae"` // 保持你指定的字段名（注意拼写）
+	CWEID           string          `json:"cwe_id"`        // 无值则为null
+	FilePath        string          `json:"file_path"`
+	Module          string          `json:"module"` // 模块名.(类 / 函数),即错误发生的最小层级
+	Range           Range           `json:"range"`
+	SeverityLevel   SeverityLevel   `json:"severity_level"`
+	ConfidenceLevel ConfidenceLevel `json:"confidence_level"`
+}
+
+type Range struct {
+	StartLine   NullableInt `json:"start_line"` // NullableInt 将 -1 序列化成 json 的 null
+	EndLine     NullableInt `json:"end_line"`
+	StartColumn NullableInt `json:"start_column"`
+	EndColumn   NullableInt `json:"end_column"`
+}
+
+// 定义 SeverityLevel 枚举类型
+type SeverityLevel string
+const (
+	SeverityLevelCritical SeverityLevel = "CRITICAL"
+	// SeverityLevelHigh 表示高严重性级别
+	SeverityLevelHigh SeverityLevel = "HIGH"
+	// SeverityLevelMedium 表示中等严重性级别
+	SeverityLevelMedium SeverityLevel = "MEDIUM"
+	// SeverityLevelLow 表示低严重性级别
+	SeverityLevelLow SeverityLevel = "LOW"
+	// SeverityLevelUnknown 表示未知严重性级别
+	SeverityLevelUnknown SeverityLevel = "UNKNOWN"
+)
+
+// 定义 ConfidenceLevel 类型
+type ConfidenceLevel string
+const (
+	ConfidenceLevelHigh   ConfidenceLevel = "HIGH"
+	ConfidenceLevelMedium ConfidenceLevel = "MEDIUM"
+	ConfidenceLevelLow    ConfidenceLevel = "LOW"
+)
 ```
 
-### `pylint_parser`
-pylint json 报告格式：
-``` json
-[
-    {
-        "type": "convention",  // type 字段表示严重性程度，有 error、warning、refactor、convention、fatal(解析失败)
-        "module": "demo",      // 触发代码的 Python 模块名（文件名）。src/utils.py → module: "src.utils"
-        "obj": "",             // 触发代码所属的对象（函数、类、方法、类属性等）；若在模块级，则该字段为空字符串 ""
-        "line": 1,
-        "column": 0,
-        "endLine": null,
-        "endColumn": null,
-        "path": "demo.py",
-        "symbol": "missing-module-docstring",
-        "message": "Missing module docstring",
-        "message-id": "C0114"
+每个 Parser 必须实现以下几个方法：
+
+```go
+func(*ParserName) getSeverityLevel(field string) SeverityLevel
+func(*ParserName) getConfidenceLevel(field string) ConfidenceLevel
+func(*ParserName) getModule(field string) string // 目前没有实现
+func(*ParserName) getCWEID(field string) string
+func(*ParserName) readReportToIssues(path string) ([]Issues, error)  // 将报告反序列化成 Issues 中间结构
+func(*ParserName) convertIssuesToUnified(issues Issues) (UnifiedVulnerability, error)  // 将 Issues 中间结构转换成统一的 UnifiedVulnerability 类型
+func(*ParserName) Parse() ([]UnifiedVulnerability, error) // 对外暴露的统一接口
+```
+
+
+
+## `PylintParser`
+
+```go
+return UnifiedVulnerability {
+	Tool:       		"pylint"
+    WarningID:  		{message-id}  // {} 表示 json 字段
+    Category: 			{type}
+    ShortMessage: 		{message}
+    CWEID: 				[cweMapper 预映射表]  // [] 表示方法
+    FilePath: 			{path}
+    Module: 			""  // 未实现
+    Range {
+        StartLine: 		{line}
+        EndLine: 		{endLine}
+        StartColumn: 	{column}
+        EndColumn: 		{endColumn}
     }
-]
-```
-字段映射:
-```json
-  {
-  	"tool": "pylint",
-  	"warning_id": "message-id",
-    "warning_type": "symbol",
-  	"category": "type"，
-  	"short_message": "message"，
-  	"file_path": "path",
-  	"range": {
-  		"start_line": "line",
-  		"end_line": "endLine"，
-  		"start_column": "column",
-  		"end_column": "endColumn"
-  	}
-  	"cwe_id": ""，
-  	"severity_level": 根据 "type" 计算,error -> high; warning -> medium; convention -> low; refactor -> low; fatal -> unknown
-  	"confidence_level": 根据 "type" 计算,error -> high; warning -> medium; convention -> low; refactor -> low; fatal -> low
-  	"module": 拼接 module + obj
-  } 
-```
-
-
-### `horusec_parser`
-horusec 报告格式:
-```json
-{
-  "version": "v2.8.0",
-  ...,
-  "analysisVulnerabilities": [
-    {
-      "vulnerabilityID": "00000000-0000-0000-0000-000000000000",
-      "analysisID": "cb33294f-49fc-4a98-b7b6-6e4be262f4af",
-      "createdAt": "2026-01-13T19:48:18.7045282+08:00",
-      "vulnerabilities": {
-        "vulnerabilityID": "9865bda9-1007-48d3-830f-eb5d4ad048e3",
-        "line": "10",
-        "column": "19",
-        "confidence": "MEDIUM",
-        "file": "demo.py",
-        "code": "SSH_PRIVATE_KEY = \"-----BEGIN RSA PRIVATE KEY-----\\nfakekey\\n-----END RSA PRIVATE KEY-----\"",
-        "details": "(1/1) * Possible vulnerability detected: Asymmetric Private Key\nFound SSH and/or x.509 Cerficates among the files of your project, make sure you want this kind of information inside your Git repo, since it can be missused by someone with access to any kind of copy.  For more information checkout the CWE-312 (https://cwe.mitre.org/data/definitions/312.html) advisory.",
-        "securityTool": "HorusecEngine",
-        "language": "Leaks",
-        "severity": "CRITICAL",
-        "type": "Vulnerability",
-        "commitAuthor": "-",
-        "commitEmail": "-",
-        "commitHash": "-",
-        "commitMessage": "-",
-        "commitDate": "-",
-        "rule_id": "HS-LEAKS-12",
-        "vulnHash": "4130402c2096433bed4180ceb11106dc813961f3fe59922adffcfdc7d6c29b3f",
-        "deprecatedHashes": [
-          "2300504cfc572871f44a6107d147035c6f92b99199a33c5f78d34f1dc9aa51f5",
-          "1e8e21e5a1f680216882a28d03411c2d8d33775848dc4601a007bedd853d7a48"
-        ],
-        "securityToolVersion": "",
-        "securityToolInfoUri": ""
-      }
-    },
-    ...,
-  ]
+    SeverityLevel: 		[从 {type} 字段映射]
+    ConfidenceLevel: 	[从 {type} 字段映射]
 }
 ```
-字段映射:
-```json
-  {
-  	"tool": "horusec",
-  	"warning_id": "rule_id",
-    "warning_type": "rule_id",
-  	"category": "type"，
-  	"short_message": "details"，
-  	"file_path": "file",
-  	"range": {
-  		"start_line": "line",
-  		"end_line": ""，
-  		"start_column": "column",
-  		"end_column": ""
-  	}
-  	"cwe_id":计算，从 details 中提取，
-  	"severity_level": "severity"
-  	"confidence_level": "confidence"
-  	"module": ""
-  } 
-```
 
-### `bandit_parser`
-bandit 报告格式:
-```json
-{
-  "errors": [],
-  "generated_at": "2026-01-13T11:46:27Z",
-  "metrics": {  },
-  "results": [
-    {
-      "code": "7 # \u786c\u7f16\u7801\u6570\u636e\u5e93\u5bc6\u7801\n8 DB_PASSWORD = \"MyWeakPassword123!\"\n9 # \u786c\u7f16\u7801SSH\u79c1\u94a5\uff08\u7b80\u5316\u793a\u4f8b\uff09\n",
-      "col_offset": 14,
-      "end_col_offset": 34,
-      "filename": ".\\demo.py",
-      "issue_confidence": "MEDIUM",
-      "issue_cwe": {
-        "id": 259,
-        "link": "https://cwe.mitre.org/data/definitions/259.html"
-      },
-      "issue_severity": "LOW",
-      "issue_text": "Possible hardcoded password: 'MyWeakPassword123!'",
-      "line_number": 8,
-      "line_range": [
-        8
-      ],
-      "more_info": "https://bandit.readthedocs.io/en/1.9.2/plugins/b105_hardcoded_password_string.html",
-      "test_id": "B105",
-      "test_name": "hardcoded_password_string"
+
+
+## `BanditParser`
+
+```go
+return UnifiedVulnerability {
+	Tool:       		"bandit"
+    WarningID:  		{text_id}
+    Category: 			""
+    ShortMessage: 		{issue_text}
+    CWEID: 				[从 {issue_cwe.id} 中提取]
+    FilePath: 			{filename}
+    Module: 			""  // 未实现
+    Range {
+        StartLine: 		{line_range[0]}
+        EndLine: 		{line_range[1]，没有则为 line_range[0]}
+        StartColumn: 	{col_offset}
+        EndColumn: 		{end_col_offset}
     }
-  ]
-```
-字段映射:
-```json
-  {
-  	"tool": "bandit",
-  	"warning_id": "test_id",
-    "warning_type": "test_name",
-  	"category": ""，
-  	"short_message": "issue_text"，
-  	"file_path": "filename",
-  	"range": {
-  		"start_line": "line_number",
-  		"end_line": 计算，从 "line_range" 中提取，
-  		"start_column": "col_offset",
-  		"end_column": "end_col_offset"
-  	}
-  	"cwe_id":"issue_cwe.id"，
-  	"severity_level": "issue_severity"
-  	"confidence_level": "issue_confidence"
-  	"module": ""
-  } 
+    SeverityLevel: 		[从 {issue_severity} 字段映射]
+    ConfidenceLevel: 	[从 {issue_confidence} 字段映射]
+}
 ```
 
-### `semgrep_parser`
-```json
- {
-      "check_id": "java.lang.security.audit.crypto.use-of-md5.use-of-md5",
-      "path": "D:\\Code\\Project\\Multi-tool_Static_Analysis_System_refactor\\example_code\\java\\Demo1.java",
-      "start": { "line": 47, "col": 58, "offset": 1655 },
-      "end": { "line": 47, "col": 63, "offset": 1660 },
-      "extra": {
-        "message": "Detected MD5 hash algorithm which is considered insecure. MD5 is not collision resistant and is therefore not suitable as a cryptographic signature. Use HMAC instead.",
-        "fix": "\"SHA-512\"",
-        "metadata": {
-          "functional-categories": [
-            "crypto::search::hash-algorithm::java.security"
-          ],
-          "owasp": [
-            "A03:2017 - Sensitive Data Exposure",
-            "A02:2021 - Cryptographic Failures",
-            "A04:2025 - Cryptographic Failures"
-          ],
-          "cwe": ["CWE-328: Use of Weak Hash"],
-          "source-rule-url": "https://find-sec-bugs.github.io/bugs.htm#WEAK_MESSAGE_DIGEST_MD5",
-          "category": "security",
-          "technology": ["java"],
-          "references": [
-            "https://owasp.org/Top10/A02_2021-Cryptographic_Failures"
-          ],
-          "subcategory": ["vuln"],
-          "likelihood": "MEDIUM",
-          "impact": "MEDIUM",
-          "confidence": "HIGH",
-          "license": "Semgrep Rules License v1.0. For more details, visit semgrep.dev/legal/rules-license",
-          "vulnerability_class": ["Insecure Hashing Algorithm"],
-          "source": "https://semgrep.dev/r/java.lang.security.audit.crypto.use-of-md5.use-of-md5",
-          "shortlink": "https://sg.run/ryJn"
-        },
-        "severity": "WARNING",
-        "fingerprint": "requires login",
-        "lines": "requires login",
-        "validation_state": "NO_VALIDATOR",
-        "engine_kind": "OSS"
-      }
-    },
+
+
+## `HorusecParser`
+
+```go
+return UnifiedVulnerability {
+	Tool:       		"horusec"
+    WarningID:  		{rule_id}
+    Category: 			{type}
+    ShortMessage: 		{details}
+    CWEID: 				[从 {details} 中提取]
+    FilePath: 			{file}      // 相对与扫描目录的相对路径，后续可能统一绝对路径
+    Module: 			""  // 未实现
+    Range {
+        StartLine: 		{line}
+        EndLine: 		-1  // 映射到 null
+        StartColumn: 	{column}
+        EndColumn: 		-1
+    }
+    SeverityLevel: 		[从 {severity} 字段映射]
+    ConfidenceLevel: 	[从 {confidence} 字段映射]
+}
 ```
-字段映射:
-```json
-  {
-  	"tool": "semgrep",
-  	"warning_id": "check_id",
-    "warning_type": "check_id",
-  	"category": "category"，
-  	"short_message": "extra.message"，
-  	"file_path": "path",
-  	"range": {
-  		"start_line": "start.line",
-  		"end_line": "end.line"
-  		"start_column": "start.col",
-  		"end_column": "end.col"
-  	}
-  	"cwe_id":"cwe 提取"，
-  	"severity_level": "extra.metadata.impact"
-  	"confidence_level": "extra.metadata.confidence"
-  	"module": ""
-  } 
+
+
+
+## `InsiderParser`
+
+```go
+return UnifiedVulnerability {
+	Tool:       		"insider"
+    WarningID:  		{cwe}
+    Category: 			""
+    ShortMessage: 		{description}
+    CWEID: 				[从 {cwe} 中提取]
+    FilePath: 			{class}      // 仅文件名
+    Module: 			""  // 未实现
+    Range {
+        StartLine: 		{line}
+        EndLine: 		-1  // 映射到 null
+        StartColumn: 	{column}
+        EndColumn: 		-1
+    }
+    SeverityLevel: 		[从 {cvss} 字段映射]
+    ConfidenceLevel: 	[从 {cvss} 字段映射]
+}
 ```
+
+
+
+## `semgrepParser`
+
+```go
+return UnifiedVulnerability {
+	Tool:       		"semgrep"
+    WarningID:  		{check_id}
+    Category: 			{extra.metadta.category}
+    ShortMessage: 		{extra.message}
+    CWEID: 				[从 {extra.metadata.cwe} 中提取]
+    FilePath: 			{path}
+    Module: 			""  // 未实现
+    Range {
+        StartLine: 		{start.line}
+        EndLine: 		{end.line}
+        StartColumn: 	{start.col}
+        EndColumn: 		{end.col}
+    }
+    SeverityLevel: 		[从 {extra.severity} 字段映射]
+    ConfidenceLevel: 	[从 {extra.metadata.confidence} 字段映射]
+}
+```
+
+
+
+## `cppcheckParser`
+
+解析 `xml` 文件
+
+```go
+return UnifiedVulnerability {
+	Tool:       		"cppcheck"
+    WarningID:  		{id}
+    Category: 			""
+    ShortMessage: 		{msg}
+    CWEID: 				[部分从 {cwe} 中提取，没有从 cweMapper 获取]
+    FilePath: 			{location.file}
+    Module: 			""  // 未实现
+    Range {
+        StartLine: 		{location.line}
+        EndLine: 		-1
+        StartColumn: 	{location.column}
+        EndColumn: 		-1
+    }
+    SeverityLevel: 		[从 {severity} 字段映射]
+    ConfidenceLevel: 	[从 {severity} 字段映射]
+}
+```
+
+
+
+## `spotbugsParser`
+
+解析 `xml` 文件，且仅能扫描 `.class` java 字节码
+
+```go
+return UnifiedVulnerability {
+	Tool:       		"spotbugs"
+    WarningID:  		{type}
+    Category: 			{category}
+    ShortMessage: 		""
+    CWEID: 				[从 cweMapper 获取]
+    FilePath: 			{SourceLine.sourcepath}  // 相对与扫描目录的相对路径
+    Module: 			""  // 未实现
+    Range {
+        StartLine: 		{SourceLine.start}
+        EndLine: 		{SourceLine.end}
+        StartColumn: 	-1
+        EndColumn: 		-1
+    }
+    SeverityLevel: 		[从 {priority} 字段映射]
+    ConfidenceLevel: 	[从 {rank} 字段映射]
+}
+```
+
+
+
+## `CodeQlParser`
+
+解析 `sarif` 文件。
+
+
+
+## `CSAParser`
+
+解析 `html` 网页

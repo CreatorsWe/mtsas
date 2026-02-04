@@ -23,24 +23,24 @@ func NewCppcheckParser(parseFilePath string, queryInterface func(string, string)
 }
 
 // Cppcheck XML 报告结构定义
-type CppcheckReport struct {
-	XMLName xml.Name        `xml:"results"`
-	Version string          `xml:"version,attr"`
-	Errors  []CppcheckError `xml:"errors>error"`
+type o_cppcheckIssues struct {
+	XMLName xml.Name         `xml:"results"`
+	Version string           `xml:"version,attr"`
+	Errors  []cppcheckIssues `xml:"errors>error"`
 }
 
-type CppcheckError struct {
+type cppcheckIssues struct {
 	ID       string   `xml:"id,attr"`
 	Severity string   `xml:"severity,attr"`
 	Message  string   `xml:"msg,attr"`
 	Verbose  string   `xml:"verbose,attr"`
 	CWE      string   `xml:"cwe,attr"`
 	File0    string   `xml:"file0,attr"`
-	Location Location `xml:"location"`
+	Location location `xml:"location"`
 	Symbol   string   `xml:"symbol"`
 }
 
-type Location struct {
+type location struct {
 	File   string `xml:"file,attr"`
 	Line   int    `xml:"line,attr"`
 	Column int    `xml:"column,attr"`
@@ -89,61 +89,33 @@ func (c *CppcheckParser) getConfidenceLevel(severity string) ConfidenceLevel {
 // 	return moduleName
 // }
 
-// 获取类别信息
-func (c *CppcheckParser) getCategory(errorID string, severity string) string {
-	// 基于 error ID 和严重级别推断类别
-	switch errorID {
-	case "missingIncludeSystem":
-		return "include"
-	case "constVariablePointer", "cstyleCast":
-		return "code.style"
-	case "deallocuse":
-		return "memory"
-	case "unusedFunction":
-		return "dead.code"
-	case "checkersReport":
-		return "system.info"
-	default:
-		return "general"
-	}
-}
-
 // 获取 cwe 字段
 func (c *CppcheckParser) getCWE(errorID string) (string, error) {
 	return c.queryInterface("cppcheck", errorID)
 }
 
 // 转换 Cppcheck 错误为统一漏洞格式
-func (c *CppcheckParser) convertToUnified(errorObj CppcheckError) (UnifiedVulnerability, error) {
+func (c *CppcheckParser) convertIssuesToUnified(issues cppcheckIssues) (UnifiedVulnerability, error) {
 	// 构建范围信息
 	vulnRange := Range{
-		StartLine:   NullableInt(errorObj.Location.Line),
-		EndLine:     NullableInt(errorObj.Location.Line), // Cppcheck 通常只提供单行
-		StartColumn: NullableInt(errorObj.Location.Column),
-		EndColumn:   NullableInt(errorObj.Location.Column), // Cppcheck 通常只提供单列
+		StartLine:   NullableInt(issues.Location.Line),
+		EndLine:     -1,
+		StartColumn: NullableInt(issues.Location.Column),
+		EndColumn:   -1,
 	}
 
 	// 获取严重级别和置信度
-	severityLevel := c.getSeverityLevel(errorObj.Severity)
-	confidenceLevel := c.getConfidenceLevel(errorObj.Severity)
-
-	// 获取警告类别
-	category := c.getCategory(errorObj.ID, errorObj.Severity)
+	severityLevel := c.getSeverityLevel(issues.Severity)
+	confidenceLevel := c.getConfidenceLevel(issues.Severity)
 
 	// 获取模块
 	// module := c.getModule(errorObj.Location.File)
 
-	// 使用 Verbose 消息作为详细描述，如果没有则使用 Message
-	shortMessage := errorObj.Message
-	if errorObj.Verbose != "" {
-		shortMessage = errorObj.Verbose
-	}
-
 	// 处理 CWE 字段
-	cweID := errorObj.CWE
+	cweID := issues.CWE
 	var err error
 	if cweID == "" {
-		cweID, err = c.getCWE(errorObj.ID)
+		cweID, err = c.getCWE(issues.ID)
 		if err != nil {
 			return UnifiedVulnerability{}, err
 		}
@@ -151,12 +123,11 @@ func (c *CppcheckParser) convertToUnified(errorObj CppcheckError) (UnifiedVulner
 
 	return UnifiedVulnerability{
 		Tool:            "cppcheck",
-		WarningID:       errorObj.ID,
-		WarningType:     errorObj.ID,
-		Category:        category,
-		ShortMessage:    shortMessage,
+		WarningID:       issues.ID,
+		Category:        "",
+		ShortMessage:    issues.Message,
 		CWEID:           cweID,
-		FilePath:        errorObj.Location.File,
+		FilePath:        issues.Location.File,
 		Module:          "",
 		Range:           vulnRange,
 		SeverityLevel:   severityLevel,
@@ -165,8 +136,8 @@ func (c *CppcheckParser) convertToUnified(errorObj CppcheckError) (UnifiedVulner
 }
 
 // 读取并解析XML文件
-func (c *CppcheckParser) readXMLReport() (*CppcheckReport, error) {
-	file, err := os.Open(c.parseFilePath)
+func (c *CppcheckParser) readReportToIssues(file_path string) ([]cppcheckIssues, error) {
+	file, err := os.Open(file_path)
 	if err != nil {
 		return nil, fmt.Errorf("打开文件失败: %v", err)
 	}
@@ -177,37 +148,27 @@ func (c *CppcheckParser) readXMLReport() (*CppcheckReport, error) {
 		return nil, fmt.Errorf("读取文件失败: %v", err)
 	}
 
-	var report CppcheckReport
+	var report o_cppcheckIssues
 	err = xml.Unmarshal(data, &report)
 	if err != nil {
 		return nil, fmt.Errorf("解析XML失败: %v", err)
 	}
 
-	return &report, nil
+	return report.Errors, nil
 }
 
 // Parse 解析 Cppcheck XML 报告并返回 UnifiedVulnerability 列表
 func (c *CppcheckParser) Parse() ([]UnifiedVulnerability, error) {
 	// 读取并解析XML报告
-	report, err := c.readXMLReport()
+	report, err := c.readReportToIssues(c.parseFilePath)
 	if err != nil {
 		return nil, fmt.Errorf("解析Cppcheck报告失败: %v", err)
 	}
 
-	// 过滤掉系统信息类型的错误（如checkersReport）
-	var filteredErrors []CppcheckError
-	for _, errorObj := range report.Errors {
-		// 跳过系统信息类型的错误
-		if errorObj.ID == "checkersReport" {
-			continue
-		}
-		filteredErrors = append(filteredErrors, errorObj)
-	}
-
 	// 转换为统一格式
 	var unifiedVulns []UnifiedVulnerability
-	for _, errorObj := range filteredErrors {
-		unifiedVuln, err := c.convertToUnified(errorObj)
+	for _, errorObj := range report {
+		unifiedVuln, err := c.convertIssuesToUnified(errorObj)
 		if err != nil {
 			return nil, err
 		}
@@ -221,86 +182,26 @@ func (c *CppcheckParser) GetName() string {
 	return "cppcheckParser"
 }
 
-// // GetReportSummary 获取报告摘要信息
-// func (c *CppcheckParser) GetReportSummary() (map[string]interface{}, error) {
-// 	report, err := c.readXMLReport()
-// 	if err != nil {
-// 		return nil, err
-// 	}
+// Parse 解析 Cppcheck XML 报告并返回 UnifiedVulnerability 列表
+func (c *CppcheckParser) ParseToFile(output_file string) error {
+	// 读取并解析XML报告
+	report, err := c.readReportToIssues(c.parseFilePath)
+	if err != nil {
+		return err
+	}
 
-// 	summary := make(map[string]interface{})
-// 	summary["version"] = report.Version
-// 	summary["total_errors"] = len(report.Errors)
+	// 转换为统一格式
+	var unifiedVulns []UnifiedVulnerability
+	for _, errorObj := range report {
+		unifiedVuln, err := c.convertIssuesToUnified(errorObj)
+		if err != nil {
+			return err
+		}
+		unifiedVulns = append(unifiedVulns, unifiedVuln)
+	}
 
-// 	// 统计各严重级别的错误数量
-// 	severityCount := make(map[string]int)
-// 	for _, error := range report.Errors {
-// 		severityCount[error.Severity]++
-// 	}
-// 	summary["severity_distribution"] = severityCount
-
-// 	// 统计文件分布
-// 	fileDistribution := make(map[string]int)
-// 	for _, error := range report.Errors {
-// 		if error.Location.File != "" {
-// 			fileDistribution[error.Location.File]++
-// 		}
-// 	}
-// 	summary["file_distribution"] = fileDistribution
-
-// 	return summary, nil
-// }
-
-// // FilterBySeverity 按严重级别过滤漏洞
-// func (c *CppcheckParser) FilterBySeverity(severity SeverityLevel) ([]UnifiedVulnerability, error) {
-// 	allVulns, err := c.Parse()
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	var filtered []UnifiedVulnerability
-// 	for _, vuln := range allVulns {
-// 		if vuln.SeverityLevel == severity {
-// 			filtered = append(filtered, vuln)
-// 		}
-// 	}
-
-// 	return filtered, nil
-// }
-
-// // FilterByFile 按文件路径过滤漏洞
-// func (c *CppcheckParser) FilterByFile(filePattern string) ([]UnifiedVulnerability, error) {
-// 	allVulns, err := c.Parse()
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	var filtered []UnifiedVulnerability
-// 	for _, vuln := range allVulns {
-// 		if strings.Contains(vuln.FilePath, filePattern) {
-// 			filtered = append(filtered, vuln)
-// 		}
-// 	}
-
-// 	return filtered, nil
-// }
-
-// // GetErrorsByCWE 按CWE ID分组获取错误
-// func (c *CppcheckParser) GetErrorsByCWE() (map[string][]UnifiedVulnerability, error) {
-// 	allVulns, err := c.Parse()
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	cweMap := make(map[string][]UnifiedVulnerability)
-// 	for _, vuln := range allVulns {
-// 		if vuln.CWEID != "" {
-// 			cweMap[vuln.CWEID] = append(cweMap[vuln.CWEID], vuln)
-// 		} else {
-// 			// 没有CWE ID的归为一类
-// 			cweMap["unknown"] = append(cweMap["unknown"], vuln)
-// 		}
-// 	}
-
-// 	return cweMap, nil
-// }
+	if err := StructsToJSONFile(unifiedVulns, output_file); err != nil {
+		return err
+	}
+	return nil
+}

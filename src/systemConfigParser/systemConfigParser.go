@@ -244,6 +244,8 @@ func (s *SystemConfigParser) mapStringToLanguage(langStr string) Language {
 		return LanguageKotlin
 	case "rust", "rs":
 		return LanguageRust
+	case "c#", "csharp":
+		return LanguageCsharp
 	default:
 		return LanguageUnknown
 	}

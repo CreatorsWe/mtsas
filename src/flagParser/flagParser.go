@@ -15,30 +15,51 @@ func NewFlagParser() *FlagParser {
 	return &FlagParser{}
 }
 
-func (fp *FlagParser) ParseFlags() (*ScanFlag, error) {
-	// 定义命令行参数
+func (fp *FlagParser) ParseFlags() (interface{}, error) {
+	if len(os.Args) < 2 {
+		return nil, fmt.Errorf("必须提供子命令: scan, visual 或 map")
+	}
+
+	subcommand := os.Args[1]
+
+	switch subcommand {
+	case "scan":
+		return fp.parseScanFlags()
+	case "visual":
+		return fp.parseVisualFlags()
+	case "map":
+		return fp.parseMapFlags()
+	default:
+		return nil, fmt.Errorf("未知子命令: %s，支持的命令: scan, visual, map", subcommand)
+	}
+}
+
+// parseScanFlags 处理 mtsas scan 子命令
+func (fp *FlagParser) parseScanFlags() (*ScanFlag, error) {
+	scanCmd := flag.NewFlagSet("scan", flag.ExitOnError)
+
+	// 定义 scan 子命令的参数
 	var (
-		projectName   = flag.String("name", "", "项目名称（必须）")
-		outputDir     = flag.String("output-dir", ".", "输出目录路径，默认为 .mtsas")
-		outputFormat  = flag.String("format", "", "输出文件格式: json, csv")
-		projectConfig = flag.String("config", "", "项目配置文件路径（toml 格式）")
-		isQuiet       = flag.Bool("quiet", false, "静默模式，控制台不输出除 Error 外的任何信息")
-		excludeDirs   = flag.String("exclude", "", "要排除的目录，多个目录用逗号分隔")
+		projectName   = scanCmd.String("name", "", "项目名称（必须）")
+		outputDir     = scanCmd.String("output-dir", ".", "输出目录路径，默认为 .mtsas")
+		outputFormat  = scanCmd.String("format", "", "输出文件格式: json, csv")
+		projectConfig = scanCmd.String("config", "", "项目配置文件路径（toml 格式）")
+		isQuiet       = scanCmd.Bool("quiet", false, "静默模式，控制台不输出除 Error 外的任何信息")
+		excludeDirs   = scanCmd.String("exclude", "", "要排除的目录，多个目录用逗号分隔")
 	)
 
 	// 自定义用法信息
-	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "用法: %s [选项] <scan_dir>\n\n", os.Args[0])
+	scanCmd.Usage = func() {
+		fmt.Fprintf(flag.CommandLine.Output(), "用法: %s scan [选项] <scan_dir>\n\n", os.Args[0])
 		fmt.Fprintf(flag.CommandLine.Output(), "scan_dir: 要扫描的目录或文件路径（必须）\n\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "选项:\n")
-		flag.PrintDefaults()
-		fmt.Fprintf(flag.CommandLine.Output(), "\n示例:\n")
-		fmt.Fprintf(flag.CommandLine.Output(), "  %s --name myproject --format json /path/to/project\n", os.Args[0])
-		fmt.Fprintf(flag.CommandLine.Output(), "  %s --name myproject --config config.toml --quiet /path/to/src\n", os.Args[0])
+		scanCmd.PrintDefaults()
 	}
 
-	// 解析命令行参数
-	flag.Parse()
+	// 解析 scan 子命令参数
+	if err := scanCmd.Parse(os.Args[2:]); err != nil {
+		return nil, err
+	}
 
 	// 验证必须参数
 	if *projectName == "" {
@@ -46,7 +67,7 @@ func (fp *FlagParser) ParseFlags() (*ScanFlag, error) {
 	}
 
 	// 获取位置参数（scan_dir）
-	args := flag.Args()
+	args := scanCmd.Args()
 	if len(args) == 0 {
 		return nil, fmt.Errorf("必须提供扫描目录 scan_dir")
 	}
@@ -62,7 +83,6 @@ func (fp *FlagParser) ParseFlags() (*ScanFlag, error) {
 		return nil, fmt.Errorf("错误: 无法访问扫描路径: %v", err)
 	}
 
-	// 确报是目录
 	if !fileInfo.IsDir() {
 		return nil, fmt.Errorf("错误: 扫描路径必须是目录: %s", scanDir)
 	}
@@ -94,7 +114,7 @@ func (fp *FlagParser) ParseFlags() (*ScanFlag, error) {
 		return nil, fmt.Errorf("错误: 无法解析输出目录路径: %v", err)
 	}
 
-	// 构建 Flag 对象
+	// 构建 ScanFlag 对象
 	flagObj := &ScanFlag{
 		ProjectName:   *projectName,
 		OutputDir:     absOutputDir,
@@ -109,12 +129,75 @@ func (fp *FlagParser) ParseFlags() (*ScanFlag, error) {
 	return flagObj, nil
 }
 
-// splitExcludeDirs 将逗号分隔的排除目录字符串分割为切片
+// parseVisualFlags 处理 mtsas visual 子命令
+func (fp *FlagParser) parseVisualFlags() (*VisualFlag, error) {
+	visualCmd := flag.NewFlagSet("visual", flag.ExitOnError)
+
+	// 定义 visual 子命令的参数
+	var (
+		outputDir = visualCmd.String("output-dir", ".", " .mtsas 目录，默认为 .")
+		name      = visualCmd.String("name", "", "项目名称（必须）")
+	)
+
+	// 自定义用法信息
+	visualCmd.Usage = func() {
+		fmt.Fprintf(flag.CommandLine.Output(), "用法: %s visual [选项]\n\n", os.Args[0])
+		fmt.Fprintf(flag.CommandLine.Output(), "选项:\n")
+		visualCmd.PrintDefaults()
+	}
+
+	// 解析 visual 子命令参数
+	if err := visualCmd.Parse(os.Args[2:]); err != nil {
+		return nil, err
+	}
+
+	// 验证必须参数
+	if *name == "" {
+		return nil, fmt.Errorf("--name 参数必须提供")
+	}
+
+	// 构建输出目录的绝对路径
+	absOutputDir, err := filepath.Abs(*outputDir)
+	if err != nil {
+		return nil, fmt.Errorf("错误: 无法解析输出目录路径: %v", err)
+	}
+
+	// 构建 VisualFlag 对象
+	flagObj := &VisualFlag{
+		ProjectName: *name,
+		OutputDir:   absOutputDir,
+	}
+
+	return flagObj, nil
+}
+
+// parseMapFlags 处理 mtsas map 子命令
+func (fp *FlagParser) parseMapFlags() (*MapFlag, error) {
+	mapCmd := flag.NewFlagSet("map", flag.ExitOnError)
+
+	// 自定义用法信息
+	mapCmd.Usage = func() {
+		fmt.Fprintf(flag.CommandLine.Output(), "用法: %s map\n\n", os.Args[0])
+		fmt.Fprintf(flag.CommandLine.Output(), "可视化cwe预映射表\n\n")
+	}
+
+	// 解析 map 子命令参数
+	if err := mapCmd.Parse(os.Args[2:]); err != nil {
+		return nil, err
+	}
+
+	// 检查是否有额外的参数
+	if len(mapCmd.Args()) > 0 {
+		return nil, fmt.Errorf("map 子命令不需要额外参数")
+	}
+
+	// 构建 MapFlag 对象
+	return &MapFlag{}, nil
+}
+
+// 原有的辅助函数保持不变
 func splitExcludeDirs(excludeStr string) []string {
 	var result []string
-	// 简单的分割逻辑，可以根据需要增强
-	// 这里使用简单的字符串分割，不考虑引号等复杂情况
-	// 如果需要支持带空格的目录名，可以增强此函数
 	dirs := splitByComma(excludeStr)
 	for _, dir := range dirs {
 		if dir != "" {
@@ -124,13 +207,11 @@ func splitExcludeDirs(excludeStr string) []string {
 	return result
 }
 
-// splitByComma 按逗号分割字符串，处理基本的空格
 func splitByComma(s string) []string {
 	var result []string
 	start := 0
 	for i := 0; i < len(s); i++ {
 		if s[i] == ',' {
-			// 提取字段并去除首尾空格
 			field := trimSpace(s[start:i])
 			if field != "" {
 				result = append(result, field)
@@ -138,7 +219,6 @@ func splitByComma(s string) []string {
 			start = i + 1
 		}
 	}
-	// 添加最后一个字段
 	if start < len(s) {
 		field := trimSpace(s[start:])
 		if field != "" {
@@ -148,7 +228,6 @@ func splitByComma(s string) []string {
 	return result
 }
 
-// trimSpace 去除字符串首尾空格
 func trimSpace(s string) string {
 	start, end := 0, len(s)
 	for start < end && (s[start] == ' ' || s[start] == '\t') {

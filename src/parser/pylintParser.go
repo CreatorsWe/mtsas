@@ -21,7 +21,7 @@ func NewPylintParser(parseFilePath string, query func(string, string) (string, e
 }
 
 // PylintIssue 定义 Pylint JSON 报告的结构体
-type PylintIssue struct {
+type pylintIssues struct {
 	Type      string      `json:"type"`
 	Module    string      `json:"module"`
 	Obj       string      `json:"obj"` // 类/函数名，补充模块路径
@@ -36,7 +36,7 @@ type PylintIssue struct {
 }
 
 // 将 pylint type 字段映射为 unified severity_level 字段
-func pylint_getSeverityLevel(typeField string) SeverityLevel {
+func (p *PylintParser) getSeverityLevel(typeField string) SeverityLevel {
 	switch typeField {
 	case "error":
 		return SeverityLevelHigh
@@ -54,7 +54,7 @@ func pylint_getSeverityLevel(typeField string) SeverityLevel {
 }
 
 // 将 pylint type 字段映射成 unified confidence_level 字段
-func pylint_getConfidenceLevel(typeField string) ConfidenceLevel {
+func (p *PylintParser) getConfidenceLevel(typeField string) ConfidenceLevel {
 	switch typeField {
 	case "error":
 		return ConfidenceLevelHigh
@@ -72,13 +72,13 @@ func pylint_getConfidenceLevel(typeField string) ConfidenceLevel {
 }
 
 // 获取 Module 字段
-func pylint_getModule(module string, obj string) string {
-	fullModule := module
-	if obj != "" {
-		fullModule = fmt.Sprintf("%s.%s", module, obj)
-	}
-	return fullModule
-}
+// func (p *PylintParser) getModule(module string, obj string) string {
+// 	fullModule := module
+// 	if obj != "" {
+// 		fullModule = fmt.Sprintf("%s.%s", module, obj)
+// 	}
+// 	return fullModule
+// }
 
 // 获取 CWE 字段
 func (p *PylintParser) getCWEID(messageID string) (string, error) {
@@ -86,7 +86,7 @@ func (p *PylintParser) getCWEID(messageID string) (string, error) {
 }
 
 // ConvertPylintIssueToUnified 将PylintIssue转换为统一漏洞结构体
-func (p *PylintParser) convertPylintIssueToUnified(issue PylintIssue) (UnifiedVulnerability, error) {
+func (p *PylintParser) convertIssuesToUnified(issue pylintIssues) (UnifiedVulnerability, error) {
 	cweID, err := p.getCWEID(issue.MessageID)
 	if err != nil {
 		return UnifiedVulnerability{}, err
@@ -95,7 +95,6 @@ func (p *PylintParser) convertPylintIssueToUnified(issue PylintIssue) (UnifiedVu
 	return UnifiedVulnerability{
 		Tool:         "pylint", // 固定为pylint
 		WarningID:    issue.MessageID,
-		WarningType:  issue.Symbol,
 		Category:     issue.Type,
 		ShortMessage: issue.Message,
 		FilePath:     issue.Path,
@@ -106,13 +105,13 @@ func (p *PylintParser) convertPylintIssueToUnified(issue PylintIssue) (UnifiedVu
 			EndColumn:   issue.EndColumn,
 		},
 		CWEID:           cweID,
-		SeverityLevel:   pylint_getSeverityLevel(issue.Type),
-		ConfidenceLevel: pylint_getConfidenceLevel(issue.Type),
-		Module:          pylint_getModule(issue.Module, issue.Obj),
+		SeverityLevel:   p.getSeverityLevel(issue.Type),
+		ConfidenceLevel: p.getConfidenceLevel(issue.Type),
+		Module:          "",
 	}, nil
 }
 
-func readJsonToPylintIssues(path string) ([]PylintIssue, error) {
+func (p *PylintParser) readReportToIssues(path string) ([]pylintIssues, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		err_msg := fmt.Errorf("读取文件失败: %v\n", err)
@@ -120,7 +119,7 @@ func readJsonToPylintIssues(path string) ([]PylintIssue, error) {
 	}
 
 	// 2. 解析Pylint JSON为[]PylintIssue
-	var pylintIssues []PylintIssue
+	var pylintIssues []pylintIssues
 	err = json.Unmarshal(data, &pylintIssues)
 	if err != nil {
 		err_msg := fmt.Errorf("解析JSON失败: %v\n", err)
@@ -131,7 +130,7 @@ func readJsonToPylintIssues(path string) ([]PylintIssue, error) {
 }
 
 func (p *PylintParser) Parse() ([]UnifiedVulnerability, error) {
-	pylintIssues, err := readJsonToPylintIssues(p.parseFilePath)
+	pylintIssues, err := p.readReportToIssues(p.parseFilePath)
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +138,7 @@ func (p *PylintParser) Parse() ([]UnifiedVulnerability, error) {
 	// 3. 转换为统一格式
 	var unifiedVuls []UnifiedVulnerability
 	for _, issue := range pylintIssues {
-		unifiedVul, err := p.convertPylintIssueToUnified(issue)
+		unifiedVul, err := p.convertIssuesToUnified(issue)
 		if err != nil {
 			return nil, err
 		}
@@ -150,4 +149,26 @@ func (p *PylintParser) Parse() ([]UnifiedVulnerability, error) {
 
 func (p *PylintParser) GetName() string {
 	return "pylintParser"
+}
+
+// 解析报告文件，并将结果写入 json 文件中
+func (p *PylintParser) ParseToFile(output_path string) error {
+	pylintIssues, err := p.readReportToIssues(p.parseFilePath)
+	if err != nil {
+		return err
+	}
+
+	// 3. 转换为统一格式
+	var unifiedVuls []UnifiedVulnerability
+	for _, issue := range pylintIssues {
+		unifiedVul, err := p.convertIssuesToUnified(issue)
+		if err != nil {
+			return err
+		}
+		unifiedVuls = append(unifiedVuls, unifiedVul)
+	}
+	if err := StructsToJSONFile(unifiedVuls, output_path); err != nil {
+		return err
+	}
+	return nil
 }

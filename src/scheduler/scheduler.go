@@ -5,6 +5,7 @@ import (
 	"os"
 	"slices"
 	"sync"
+	"time"
 
 	. "github.com/mtsas/common"
 	"github.com/mtsas/cweMapper"
@@ -70,11 +71,14 @@ func (s *Scheduler) Scheduler() {
 		wg.Add(1)
 		go func(exec Executor, parser Parser) {
 			defer wg.Done()
+			start := time.Now()
 			executeResult := exec.Execute()
 			if !executeResult.Success {
 				ConsoleLogger.Error(fmt.Sprintf("工具 %s 执行失败：%s，输出信息：%s", exec.GetToolInfo().Name, executeResult.Error, executeResult.Output))
 				return
 			}
+			executeTime := time.Since(start)
+			ConsoleLogger.Info(fmt.Sprintf("工具 %s 执行成功，耗时 %.2f", exec.GetToolInfo().Name, executeTime.Seconds()))
 			vulnerabilities, err := parser.Parse()
 			if err != nil {
 				ConsoleLogger.Error(fmt.Sprintf("解析器 %s 解析结果失败：%s", parser.GetName(), err.Error()))
