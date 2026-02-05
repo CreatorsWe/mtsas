@@ -33,12 +33,14 @@ type sourceLine struct {
 }
 
 type SpotBugsParser struct {
-	parseFilePath string
+	parseFilePath  string
+	queryInterface func(string, string) (string, error)
 }
 
-func NewSpotBugsParser(parseFilePath string) *SpotBugsParser {
+func NewSpotBugsParser(parseFilePath string, query func(string, string) (string, error)) *SpotBugsParser {
 	return &SpotBugsParser{
-		parseFilePath: parseFilePath,
+		parseFilePath:  parseFilePath,
+		queryInterface: query,
 	}
 }
 
@@ -67,6 +69,11 @@ func (s *SpotBugsParser) getConfidenceLevel(rank int) ConfidenceLevel {
 	}
 }
 
+// 获取 CWE 字段
+func (s *SpotBugsParser) getCWEID(issueType string) (string, error) {
+	return s.queryInterface("spotbugs", issueType)
+}
+
 // 读取并解析 XML 文件
 func (s *SpotBugsParser) readReportToIssues(path string) ([]spotbugsIssues, error) {
 	data, err := os.ReadFile(path)
@@ -85,13 +92,17 @@ func (s *SpotBugsParser) readReportToIssues(path string) ([]spotbugsIssues, erro
 
 func (s *SpotBugsParser) convertIssuesToUnified(issues spotbugsIssues) (UnifiedVulnerability, error) {
 
+	cweID, err := s.getCWEID(issues.Type)
+	if err != nil {
+		return UnifiedVulnerability{}, err
+	}
 	return UnifiedVulnerability{
 		Tool:            "spotbugs",
 		WarningID:       issues.Type,
 		Category:        issues.Category,
 		ShortMessage:    "",
 		FilePath:        issues.SourceLine.SourcePath,
-		CWEID:           "",
+		CWEID:           cweID,
 		SeverityLevel:   s.getSeverityLevel(issues.Priority),
 		ConfidenceLevel: s.getConfidenceLevel(issues.Rank),
 		Module:          "",

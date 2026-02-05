@@ -46,7 +46,7 @@ const (
 )
 ```
 
-每个 Parser 必须实现以下几个方法：
+每个 Parser 应该实现以下几个方法：
 
 ```go
 func(*ParserName) getSeverityLevel(field string) SeverityLevel
@@ -68,7 +68,7 @@ return UnifiedVulnerability {
     WarningID:  		{message-id}  // {} 表示 json 字段
     Category: 			{type}
     ShortMessage: 		{message}
-    CWEID: 				[cweMapper 预映射表]  // [] 表示方法
+    CWEID: 				[cweMapper 预映射表(message-id)]  // [] 表示方法
     FilePath: 			{path}
     Module: 			""  // 未实现
     Range {
@@ -190,7 +190,7 @@ return UnifiedVulnerability {
     WarningID:  		{id}
     Category: 			""
     ShortMessage: 		{msg}
-    CWEID: 				[部分从 {cwe} 中提取，没有从 cweMapper 获取]
+    CWEID: 				[部分从 {cwe} 中提取，没有从 cweMapper 获取(id)]
     FilePath: 			{location.file}
     Module: 			""  // 未实现
     Range {
@@ -216,7 +216,7 @@ return UnifiedVulnerability {
     WarningID:  		{type}
     Category: 			{category}
     ShortMessage: 		""
-    CWEID: 				[从 cweMapper 获取]
+    CWEID: 				[从 cweMapper 获取(type)]
     FilePath: 			{SourceLine.sourcepath}  // 相对与扫描目录的相对路径
     Module: 			""  // 未实现
     Range {
@@ -236,13 +236,13 @@ return UnifiedVulnerability {
 
 解析 `sarif` 文件。该报告的漏洞（位于 runs.results） 和该漏洞对应的 ruleId 的信息（位于 runs.tool.driver.rules）是分开的，所以都需要获取。
 
-```
+```go
 return UnifiedVulnerability {
 	Tool:       		"codeql"
     WarningID:  		{results.ruleId}
     Category: 			kind
     ShortMessage: 		{results.message.text}
-    CWEID: 				[部分从 rules.properties.tags  获取，部分查询数据库]
+    CWEID: 				[部分从 rules.properties.tags  获取，部分查询数据库(ruleId)]
     FilePath: 			{results.locations.physicalLocation.artifactLocation.uri}  // 相对与扫描目录的相对路径
     Module: 			""  // 未实现
     Range {
@@ -270,7 +270,7 @@ return UnifiedVulnerability {
     WarningID:  		{bug Type}
     Category: 			{bug Group}
     ShortMessage: 		[从跳转的网页获取，获取 <tr data-linenumber = ?> 为 line 处获取其下面的 <tr>.<div> 内容]
-    CWEID: 				[从 cweMapper 查询]
+    CWEID: 				[从 cweMapper 查询(bug Type)]
     FilePath: 			{File}  // 文件名
     Module: 			""  // 未实现
     Range {
@@ -283,4 +283,3 @@ return UnifiedVulnerability {
     ConfidenceLevel: 	[csa 置信度较高]
 }
 ```
-
