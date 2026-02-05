@@ -13,11 +13,11 @@ type PylintParser struct {
 	queryInterface func(string, string) (string, error)
 }
 
-func NewPylintParser(parseFilePath string, query func(string, string) (string, error)) (*PylintParser, error) {
+func NewPylintParser(parseFilePath string, query func(string, string) (string, error)) *PylintParser {
 	return &PylintParser{
 		parseFilePath:  parseFilePath,
 		queryInterface: query,
-	}, nil
+	}
 }
 
 // PylintIssue 定义 Pylint JSON 报告的结构体

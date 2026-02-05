@@ -234,10 +234,53 @@ return UnifiedVulnerability {
 
 ## `CodeQlParser`
 
-解析 `sarif` 文件。
+解析 `sarif` 文件。该报告的漏洞（位于 runs.results） 和该漏洞对应的 ruleId 的信息（位于 runs.tool.driver.rules）是分开的，所以都需要获取。
+
+```
+return UnifiedVulnerability {
+	Tool:       		"codeql"
+    WarningID:  		{results.ruleId}
+    Category: 			kind
+    ShortMessage: 		{results.message.text}
+    CWEID: 				[部分从 rules.properties.tags  获取，部分查询数据库]
+    FilePath: 			{results.locations.physicalLocation.artifactLocation.uri}  // 相对与扫描目录的相对路径
+    Module: 			""  // 未实现
+    Range {
+        StartLine: 		{results.locations.physicalLocation.region.startLine}
+        EndLine: 		{results.locations.physicalLocation.region.endLine}
+        StartColumn: 	{results.locations.physicalLocation.region.startColumn}
+        EndColumn: 		{results.locations.physicalLocation.region.endColumn}
+    }
+    SeverityLevel: 		[从 {rules.properties.problem.severity} 字段映射]
+    ConfidenceLevel: 	[从 {rules.properties.precision} 字段映射]
+}
+```
+
+
 
 
 
 ## `CSAParser`
 
-解析 `html` 网页
+解析 `index.html` 网页。
+
+```go
+return UnifiedVulnerability {
+	Tool:       		"clang static analyzer"
+    WarningID:  		{bug Type}
+    Category: 			{bug Group}
+    ShortMessage: 		[从跳转的网页获取，获取 <tr data-linenumber = ?> 为 line 处获取其下面的 <tr>.<div> 内容]
+    CWEID: 				[从 cweMapper 查询]
+    FilePath: 			{File}  // 文件名
+    Module: 			""  // 未实现
+    Range {
+        StartLine: 		{跳转网页获取 Line}
+        EndLine: 		{跳转网页获取 Column}
+        StartColumn: 	-1
+        EndColumn: 		-1
+    }
+    SeverityLevel: 		[从 bug Group 提取]
+    ConfidenceLevel: 	[csa 置信度较高]
+}
+```
+
