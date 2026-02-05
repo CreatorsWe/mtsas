@@ -172,8 +172,6 @@ func (s *Scheduler) initExecutorAndParser(toolName string, paths []string) (Exec
 		// 获取报告文件路径
 		report_path := pylintExecutor.GetReportPath()
 
-		// 获取 pylint cwe 映射数据库的地址
-		ConsoleLogger.Debug(fmt.Sprintf("systemConfigReuslt.CweMapping: %+v", s.sysConfigResult.CweMapping))
 		// 初始化 parser
 		if s.queryInterface == nil {
 			return nil, nil, fmt.Errorf("pylintparser 需要 cwe 预映射库查询接口")

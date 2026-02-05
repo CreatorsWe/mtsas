@@ -32,14 +32,16 @@ type jumpIssues struct {
 }
 
 type CSAParser struct {
-	parseFilePath string
-	baseDir       string
+	parseFilePath  string
+	baseDir        string
+	queryInterface func(string, string) (string, error)
 }
 
-func NewCSAParser(parseFilePath string) *CSAParser {
+func NewCSAParser(parseFilePath string, queryInterface func(string, string) (string, error)) *CSAParser {
 	return &CSAParser{
-		parseFilePath: parseFilePath,
-		baseDir:       filepath.Dir(parseFilePath),
+		parseFilePath:  parseFilePath,
+		baseDir:        filepath.Dir(parseFilePath),
+		queryInterface: queryInterface,
 	}
 }
 
@@ -56,13 +58,25 @@ func (c *CSAParser) getSeverityLevel(category string) SeverityLevel {
 	}
 }
 
+func (c *CSAParser) getCWEID(bugType string) (string, error) {
+	cweID, err := c.queryInterface("clang static analysis", bugType)
+	if err != nil {
+		return "", err
+	}
+	return cweID, nil
+}
+
 func (c *CSAParser) convertIssuesToUnified(issues csaIssues) (UnifiedVulnerability, error) {
+	cweID, err := c.getCWEID(issues.BugType)
+	if err != nil {
+		return UnifiedVulnerability{}, err
+	}
 	return UnifiedVulnerability{
 		Tool:         "clang-static-analysis",
 		WarningID:    issues.BugType,
 		Category:     issues.BugGroup,
 		ShortMessage: issues.Message,
-		CWEID:        "",
+		CWEID:        cweID,
 		FilePath:     issues.FilePath,
 		Module:       "",
 		Range: Range{

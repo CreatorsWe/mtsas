@@ -73,12 +73,14 @@ type textContainer struct {
 }
 
 type CodeQLParser struct {
-	parseFilePath string
+	parseFilePath  string
+	queryInterface func(string, string) (string, error)
 }
 
-func NewCodeQLParser(parseFilePath string) *CodeQLParser {
+func NewCodeQLParser(parseFilePath string, query func(string, string) (string, error)) *CodeQLParser {
 	return &CodeQLParser{
-		parseFilePath: parseFilePath,
+		parseFilePath:  parseFilePath,
+		queryInterface: query,
 	}
 }
 
@@ -99,7 +101,7 @@ func (c *CodeQLParser) readReportToIssues(path string) (*sarifReport, error) {
 }
 
 // 从规则属性中提取CWE ID
-func (c *CodeQLParser) getCWEID(tags []string) string {
+func (c *CodeQLParser) getCWEID(tags []string, ruleID string) (string, error) {
 	for _, tag := range tags {
 		if strings.HasPrefix(tag, "external/cwe/cwe-") {
 			// 提取CWE编号，如 "external/cwe/cwe-79" -> "79"
@@ -107,11 +109,16 @@ func (c *CodeQLParser) getCWEID(tags []string) string {
 			if len(parts) > 0 {
 				cwePart := parts[len(parts)-1]
 				cweNum := strings.TrimPrefix(cwePart, "cwe-")
-				return cweNum
+				return cweNum, nil
 			}
 		}
 	}
-	return ""
+	// 查询数据库
+	cweID, err := c.queryInterface("codeql", ruleID)
+	if err != nil {
+		return "", err
+	}
+	return cweID, nil
 }
 
 // 转换严重级别
@@ -153,7 +160,7 @@ func (c *CodeQLParser) getRuleMetadata(rules []rule, ruleID string) (rulePropert
 }
 
 // 转换结果为统一格式
-func (c *CodeQLParser) convertIssuesToUnified(resultObj codeqlIssues, rules []rule) UnifiedVulnerability {
+func (c *CodeQLParser) convertIssuesToUnified(resultObj codeqlIssues, rules []rule) (UnifiedVulnerability, error) {
 	props, _ := c.getRuleMetadata(rules, resultObj.RuleID)
 
 	// 处理文件路径 - 去除 file:// 前缀
@@ -184,6 +191,11 @@ func (c *CodeQLParser) convertIssuesToUnified(resultObj codeqlIssues, rules []ru
 		endLine = startLine
 	}
 
+	cweID, err := c.getCWEID(props.Tags, resultObj.RuleID)
+	if err != nil {
+		return UnifiedVulnerability{}, err
+	}
+
 	return UnifiedVulnerability{
 		Tool:         "codeql",
 		WarningID:    resultObj.RuleID,
@@ -196,11 +208,11 @@ func (c *CodeQLParser) convertIssuesToUnified(resultObj codeqlIssues, rules []ru
 			StartColumn: startColumn,
 			EndColumn:   endColumn,
 		},
-		CWEID:           c.getCWEID(props.Tags),
+		CWEID:           cweID,
 		SeverityLevel:   c.getSeverityLevel(props.ProblemSeverity),
 		ConfidenceLevel: c.getConfidenceLevel(props.Precision),
 		Module:          "",
-	}
+	}, nil
 }
 
 func (c *CodeQLParser) Parse() ([]UnifiedVulnerability, error) {
@@ -216,7 +228,10 @@ func (c *CodeQLParser) Parse() ([]UnifiedVulnerability, error) {
 
 		// 转换每个result
 		for _, result := range run.Results {
-			unifiedVuln := c.convertIssuesToUnified(result, run.Tool.Driver.Rules)
+			unifiedVuln, err := c.convertIssuesToUnified(result, run.Tool.Driver.Rules)
+			if err != nil {
+				return nil, err
+			}
 			unifiedVulnerabilities = append(unifiedVulnerabilities, unifiedVuln)
 		}
 	}
@@ -241,7 +256,10 @@ func (c *CodeQLParser) ParseToFile(output_file string) error {
 
 		// 转换每个result
 		for _, result := range run.Results {
-			unifiedVuln := c.convertIssuesToUnified(result, run.Tool.Driver.Rules)
+			unifiedVuln, err := c.convertIssuesToUnified(result, run.Tool.Driver.Rules)
+			if err != nil {
+				return err
+			}
 			unifiedVulnerabilities = append(unifiedVulnerabilities, unifiedVuln)
 		}
 	}

@@ -105,5 +105,8 @@ args = [
 path='D:\Code\Project\Multi-tool_Static_Analysis_System_refactor\database\cwe_mapping.sqlite3'
 maps = [
     {toolName = "pylint", tableName = "pylint_mapping"},
-    {toolName = "cppcheck", tableName = "cppcheck_mapping"}
+    {toolName = "cppcheck", tableName = "cppcheck_mapping"},
+    {toolName = "spotbugs"， tableName = "spotbugs_mapping"},
+    {toolName = "clang static analysis", tableName = "csa_mapping"},
+    {toolName = "codeql", tableName = "codeql_mapping"}
 ]
