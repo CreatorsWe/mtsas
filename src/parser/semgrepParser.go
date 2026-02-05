@@ -9,6 +9,28 @@ import (
 	. "github.com/mtsas/common"
 )
 
+// 报告中 extra.metadata.cwe 字段可能为 [] 数组或字符串
+type o_CWE []string
+
+// 实现自定义的 UnmarshalJSON 方法
+func (c *o_CWE) UnmarshalJSON(data []byte) error {
+	// 先尝试解析为字符串
+	var str string
+	if err := json.Unmarshal(data, &str); err == nil {
+		*c = []string{str}
+		return nil
+	}
+
+	// 再尝试解析为字符串数组
+	var arr []string
+	if err := json.Unmarshal(data, &arr); err != nil {
+		return err
+	}
+
+	*c = arr
+	return nil
+}
+
 type SemgrepParser struct {
 	parseFilePath string
 }
@@ -37,29 +59,11 @@ type semgrepIssues struct {
 		Message  string `json:"message"`
 		Fix      string `json:"fix,omitempty"`
 		Metadata struct {
-			FunctionalCategories []string `json:"functional-categories,omitempty"`
-			Owasp                []string `json:"owasp,omitempty"`
-			Cwe                  []string `json:"cwe,omitempty"`
-			SourceRuleURL        string   `json:"source-rule-url,omitempty"`
-			Category             string   `json:"category,omitempty"`
-			Technology           []string `json:"technology,omitempty"`
-			References           []string `json:"references,omitempty"`
-			Subcategory          []string `json:"subcategory,omitempty"`
-			Likelihood           string   `json:"likelihood,omitempty"`
-			Impact               string   `json:"impact,omitempty"`
-			Confidence           string   `json:"confidence,omitempty"`
-			License              string   `json:"license,omitempty"`
-			VulnerabilityClass   []string `json:"vulnerability_class,omitempty"`
-			Source               string   `json:"source,omitempty"`
-			Shortlink            string   `json:"shortlink,omitempty"`
-			Cwe2022Top25         bool     `json:"cwe2022-top25,omitempty"`
-			Cwe2021Top25         bool     `json:"cwe2021-top25,omitempty"`
+			Cwe        o_CWE  `json:"cwe,omitempty"`
+			Category   string `json:"category,omitempty"`
+			Confidence string `json:"confidence,omitempty"`
 		} `json:"metadata"`
-		Severity        string `json:"severity"`
-		Fingerprint     string `json:"fingerprint"`
-		Lines           string `json:"lines"`
-		ValidationState string `json:"validation_state"`
-		EngineKind      string `json:"engine_kind"`
+		Severity string `json:"severity"`
 	} `json:"extra"`
 }
 

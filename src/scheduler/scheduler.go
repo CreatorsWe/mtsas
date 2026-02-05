@@ -178,10 +178,7 @@ func (s *Scheduler) initExecutorAndParser(toolName string, paths []string) (Exec
 		if s.queryInterface == nil {
 			return nil, nil, fmt.Errorf("pylintparser 需要 cwe 预映射库查询接口")
 		}
-		pylintParser, err := parser.NewPylintParser(report_path, s.queryInterface)
-		if err != nil {
-			return nil, nil, err
-		}
+		pylintParser := parser.NewPylintParser(report_path, s.queryInterface)
 
 		return pylintExecutor, pylintParser, nil
 	case "bandit":
