@@ -100,7 +100,7 @@ func (s *Scheduler) Scheduler() {
 		path, _ := s.fileManager.CreateOutputFormatFile("csv")
 		StructsToCSVFile(unifiedVulnerabilities, path)
 	default:
-		ConsoleLogger.Error("不支持的输出格式")
+		ConsoleLogger.Error(fmt.Sprintf("不支持的输出格式: %s", s.flagResult.OutputFormat))
 	}
 }
 
