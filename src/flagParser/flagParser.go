@@ -15,7 +15,7 @@ func NewFlagParser() *FlagParser {
 	return &FlagParser{}
 }
 
-func (fp *FlagParser) ParseFlags() (interface{}, error) {
+func (fp *FlagParser) ParseFlags() (any, error) {
 	if len(os.Args) < 2 {
 		return nil, fmt.Errorf("必须提供子命令: scan, visual 或 map")
 	}
@@ -42,7 +42,7 @@ func (fp *FlagParser) parseScanFlags() (*ScanFlag, error) {
 	var (
 		projectName   = scanCmd.String("name", "", "项目名称（必须）")
 		outputDir     = scanCmd.String("output-dir", ".", "输出目录路径，默认为 .mtsas")
-		outputFormat  = scanCmd.String("format", "", "输出文件格式: json, csv")
+		outputFormat  = scanCmd.String("format", "json", "输出文件格式: json, csv")
 		projectConfig = scanCmd.String("config", "", "项目配置文件路径（toml 格式）")
 		isQuiet       = scanCmd.Bool("quiet", false, "静默模式，控制台不输出除 Error 外的任何信息")
 		excludeDirs   = scanCmd.String("exclude", "", "要排除的目录，多个目录用逗号分隔")
