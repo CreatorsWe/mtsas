@@ -111,7 +111,6 @@ func (b *BanditParser) convertIssuesToUnified(result banditIssues) UnifiedVulner
 		CWEID:           strconv.Itoa(result.IssueCwe.ID),
 		SeverityLevel:   b.getSeverityLevel(result.IssueSeverity),
 		ConfidenceLevel: b.getConfidenceLevel(result.IssueConfidence),
-		Module:          "",
 	}
 }
 
@@ -129,20 +128,4 @@ func (b *BanditParser) Parse() ([]UnifiedVulnerability, error) {
 
 func (p *BanditParser) GetName() string {
 	return "banditParser"
-}
-
-func (b *BanditParser) ParseToFile(output_file string) error {
-	banditresults, err := b.readReportToIssues(b.parseFilePath)
-	if err != nil {
-		return err
-	}
-	var unifiedVulnerabilities []UnifiedVulnerability
-	for _, vulnerability := range banditresults {
-		unifiedVulnerabilities = append(unifiedVulnerabilities, b.convertIssuesToUnified(vulnerability))
-	}
-
-	if err := StructsToJSONFile(unifiedVulnerabilities, output_file); err != nil {
-		return err
-	}
-	return nil
 }

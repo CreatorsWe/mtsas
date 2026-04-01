@@ -1,0 +1,18 @@
+go 1.25.5
+
+use (
+	./common
+	./cweMapper
+	./executor
+	./featureExtractor
+	./fileManager
+	./flagParser
+	./logger
+	./parser
+	./scheduler
+	./scheduler/utility
+	./systemConfigParser
+	./dbManager
+	./visual
+	.
+)

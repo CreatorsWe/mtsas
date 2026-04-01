@@ -105,7 +105,6 @@ func (s *SpotBugsParser) convertIssuesToUnified(issues spotbugsIssues) (UnifiedV
 		CWEID:           cweID,
 		SeverityLevel:   s.getSeverityLevel(issues.Priority),
 		ConfidenceLevel: s.getConfidenceLevel(issues.Rank),
-		Module:          "",
 		Range: Range{
 			StartLine:   NullableInt(issues.SourceLine.Start),
 			EndLine:     NullableInt(issues.SourceLine.End),
@@ -137,25 +136,4 @@ func (p *SpotBugsParser) Parse() ([]UnifiedVulnerability, error) {
 // 获取解析器名称
 func (p *SpotBugsParser) GetName() string {
 	return "spotbugsParser"
-}
-
-func (p *SpotBugsParser) ParseToFile(output_file string) error {
-	report, err := p.readReportToIssues(p.parseFilePath)
-	if err != nil {
-		return err
-	}
-
-	var unifiedVulnerabilities []UnifiedVulnerability
-	for _, bug := range report {
-		unifiedVuln, err := p.convertIssuesToUnified(bug)
-		if err != nil {
-			return err
-		}
-		unifiedVulnerabilities = append(unifiedVulnerabilities, unifiedVuln)
-	}
-
-	if err := StructsToJSONFile(unifiedVulnerabilities, output_file); err != nil {
-		return err
-	}
-	return nil
 }

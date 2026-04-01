@@ -77,18 +77,6 @@ func (c *CppcheckParser) getConfidenceLevel(severity string) ConfidenceLevel {
 	}
 }
 
-// 获取模块名称
-// func (c *CppcheckParser) getModule(filePath string) string {
-// 	if filePath == "" {
-// 		return "unknown"
-// 	}
-
-// 	// 从文件路径提取文件名（不含扩展名）作为模块名
-// 	baseName := filepath.Base(filePath)
-// 	moduleName := strings.TrimSuffix(baseName, filepath.Ext(baseName))
-// 	return moduleName
-// }
-
 // 获取 cwe 字段
 func (c *CppcheckParser) getCWE(errorID string) (string, error) {
 	return c.queryInterface("cppcheck", errorID)
@@ -108,9 +96,6 @@ func (c *CppcheckParser) convertIssuesToUnified(issues cppcheckIssues) (UnifiedV
 	severityLevel := c.getSeverityLevel(issues.Severity)
 	confidenceLevel := c.getConfidenceLevel(issues.Severity)
 
-	// 获取模块
-	// module := c.getModule(errorObj.Location.File)
-
 	// 处理 CWE 字段
 	cweID := issues.CWE
 	var err error
@@ -128,7 +113,6 @@ func (c *CppcheckParser) convertIssuesToUnified(issues cppcheckIssues) (UnifiedV
 		ShortMessage:    issues.Message,
 		CWEID:           cweID,
 		FilePath:        issues.Location.File,
-		Module:          "",
 		Range:           vulnRange,
 		SeverityLevel:   severityLevel,
 		ConfidenceLevel: confidenceLevel,
@@ -180,28 +164,4 @@ func (c *CppcheckParser) Parse() ([]UnifiedVulnerability, error) {
 
 func (c *CppcheckParser) GetName() string {
 	return "cppcheckParser"
-}
-
-// Parse 解析 Cppcheck XML 报告并返回 UnifiedVulnerability 列表
-func (c *CppcheckParser) ParseToFile(output_file string) error {
-	// 读取并解析XML报告
-	report, err := c.readReportToIssues(c.parseFilePath)
-	if err != nil {
-		return err
-	}
-
-	// 转换为统一格式
-	var unifiedVulns []UnifiedVulnerability
-	for _, errorObj := range report {
-		unifiedVuln, err := c.convertIssuesToUnified(errorObj)
-		if err != nil {
-			return err
-		}
-		unifiedVulns = append(unifiedVulns, unifiedVuln)
-	}
-
-	if err := StructsToJSONFile(unifiedVulns, output_file); err != nil {
-		return err
-	}
-	return nil
 }

@@ -1,0 +1,6 @@
+index.html：/demo/index 或者 /demo -> index.html index.css index.js
+
+index.data: /mtsas/index-data/timestamps
+
+
+vulner-1.data: /demo/vulner-data?number=1

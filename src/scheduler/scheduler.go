@@ -9,9 +9,12 @@ import (
 
 	. "github.com/mtsas/common"
 	"github.com/mtsas/cweMapper"
+	"github.com/mtsas/dbManager"
 	"github.com/mtsas/executor"
+	"github.com/mtsas/featureExtractor"
 	"github.com/mtsas/fileManager"
 	"github.com/mtsas/parser"
+	"github.com/mtsas/scheduler/utility"
 	"github.com/mtsas/systemConfigParser"
 )
 
@@ -92,13 +95,48 @@ func (s *Scheduler) Scheduler() {
 	wg.Wait()
 	ConsoleLogger.Info("所有工具执行完成")
 
+	// 获取 dbVulnerabilities
+	var dbVulnerabilities []DbVulnerability = make([]DbVulnerability, 0)
+	for _, vuln := range unifiedVulnerabilities {
+		dbvuln, err := featureExtractor.GetFeatureVuln(&vuln)
+		if err != nil {
+			ConsoleLogger.Warning(fmt.Sprintf("计算漏洞特征失败: %s,丢弃该漏洞: %+v", err, vuln))
+			continue
+		}
+		dbVulnerabilities = append(dbVulnerabilities, *dbvuln)
+	}
+
+	// 对 dbVulnerabilities 重复 hash 进行去重
+	unique_dbVulnerabilities, err := utility.DedupDbVulnerabilities(dbVulnerabilities)
+
+	// 存储在数据库中
+	// 1. 创建数据库
+	vulnerdbPath, err := s.fileManager.CreateVulnerDB()
+	if err != nil {
+		ConsoleLogger.Error(fmt.Sprintf("漏洞数据库创建失败: %s", err))
+		os.Exit(0)
+	}
+	// 2. 初始化数据库对象
+	vulnerDB, err := dbManager.NewDbManager(vulnerdbPath)
+	if err != nil {
+		ConsoleLogger.Error(fmt.Sprintf("漏洞数据库连接失败: %s", err))
+		os.Exit(0)
+	}
+	// 3. 存储数据库中
+	count, _, err := vulnerDB.BatchInsertVulnerabilities(unique_dbVulnerabilities)
+	if err != nil {
+		ConsoleLogger.Warning(fmt.Sprintf("数据库插入失败: %s", err))
+	}
+	ConsoleLogger.Info(fmt.Sprintf("成功插入 %d 条漏洞信息", count))
+
+	// 输出文件
 	switch s.flagResult.OutputFormat {
 	case "json":
 		path, _ := s.fileManager.CreateOutputFormatFile("json")
-		StructsToJSONFile(unifiedVulnerabilities, path)
+		utility.StructsToJSONFile(unique_dbVulnerabilities, path)
 	case "csv":
 		path, _ := s.fileManager.CreateOutputFormatFile("csv")
-		StructsToCSVFile(unifiedVulnerabilities, path)
+		utility.StructsToCSVFile(unique_dbVulnerabilities, path)
 	default:
 		ConsoleLogger.Error(fmt.Sprintf("不支持的输出格式: %s", s.flagResult.OutputFormat))
 	}
