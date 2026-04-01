@@ -8,6 +8,8 @@ import (
 	"github.com/mtsas/flagParser"
 	"github.com/mtsas/scheduler"
 
+	"github.com/mtsas/visual"
+
 	"github.com/mtsas/systemConfigParser"
 )
 
@@ -39,7 +41,12 @@ func main() {
 
 		scheduler.Scheduler()
 	case *VisualFlag:
-		fmt.Println("可视化去重、严重性等级排序")
+		// fmt.Println("可视化去重、严重性等级排序")
+		err := visual.Visual(resultObj.OutputDir, resultObj.ProjectName)
+		if err != nil {
+			ConsoleLogger.Error(fmt.Sprintf("可视化失败: %s", err))
+		}
+		select {}
 	case *MapFlag:
 		fmt.Println("可视化 cwe 预映射表命令")
 	}

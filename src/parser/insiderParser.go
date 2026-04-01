@@ -92,15 +92,6 @@ func (i *InsiderParser) getCWEID(cwe string) string {
 	return cwe
 }
 
-// 获取模块名称
-// func (p *InsiderParser) getModule(filePath string) string {
-// 	if filePath == "" {
-// 		return "unknown"
-// 	}
-// 	baseName := filepath.Base(filePath)
-// 	return strings.TrimSuffix(baseName, filepath.Ext(baseName))
-// }
-
 func (i *InsiderParser) convertIssuesToUnified(issues insiderIssues) UnifiedVulnerability {
 	// 构建 Range 结构
 	vulnRange := Range{
@@ -127,7 +118,6 @@ func (i *InsiderParser) convertIssuesToUnified(issues insiderIssues) UnifiedVuln
 		ShortMessage:    issues.Description,
 		CWEID:           cweID,
 		FilePath:        filePath,
-		Module:          "",
 		Range:           vulnRange,
 		SeverityLevel:   severityLevel,
 		ConfidenceLevel: confidenceLevel,
@@ -171,25 +161,4 @@ func (i *InsiderParser) Parse() ([]UnifiedVulnerability, error) {
 // GetName 获取解析器名称
 func (p *InsiderParser) GetName() string {
 	return "insiderParser"
-}
-
-func (i *InsiderParser) ParseToFile(output_file string) error {
-	// 读取并解析 Insider 报告
-	insiderissues, err := i.readReportToIssues(i.parseFilePath)
-	if err != nil {
-		return err
-	}
-
-	// 转换为统一格式
-	var unifiedVulns []UnifiedVulnerability
-	for _, vuln := range insiderissues {
-		unifiedVuln := i.convertIssuesToUnified(vuln)
-		unifiedVulns = append(unifiedVulns, unifiedVuln)
-	}
-
-	if err := StructsToJSONFile(unifiedVulns, output_file); err != nil {
-		return err
-	}
-
-	return nil
 }

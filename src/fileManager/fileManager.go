@@ -24,9 +24,7 @@ func NewFileManager(outputDir string, projectName string) *FileManager {
 // .mtsas
 // ├── <ProjectName>
 // │   │── <时间：年-月-日_时.分.秒>,如 2026-1-24_11.42.23
-// │   ├── .tmp
-// │   │   ├── <toolname>_result.json
-// │   └── <ProjectName>_result.json
+// │   		│── vulner.sqlite3
 
 func (f *FileManager) GetMtsasDir() string {
 	return filepath.Join(f.OutputDir, ".mtsas")
@@ -114,25 +112,6 @@ func (f *FileManager) RemoveTmpDir() error {
 	return nil
 }
 
-// func (f *FileManager) CreateToolOutputFile(toolName string) error {
-// 	outputFile := f.GetToolOutputFile(toolName)
-
-// 	// 确保父目录存在
-// 	dir := filepath.Dir(outputFile)
-// 	if err := os.MkdirAll(dir, 0755); err != nil {
-// 		return fmt.Errorf("创建目录失败: %w", err)
-// 	}
-
-// 	if _, err := os.Stat(outputFile); os.IsNotExist(err) {
-// 		file, err := os.Create(outputFile)
-// 		if err != nil {
-// 			return fmt.Errorf("创建工具输出文件失败: %w", err)
-// 		}
-// 		defer file.Close()
-// 	}
-// 	return nil
-// }
-
 func (f *FileManager) GetOutputFormatFile(outputFormat string) string {
 	timeDir := f.GetTimeDir()
 
@@ -156,4 +135,26 @@ func (f *FileManager) CreateOutputFormatFile(outputFormat string) (string, error
 		defer file.Close()
 	}
 	return outputFile, nil
+}
+
+func (f *FileManager) GetVulnerDB() string {
+	timeDir := f.GetTimeDir()
+	return filepath.Join(timeDir, "vulner.sqlite3")
+}
+
+func (f *FileManager) CreateVulnerDB() (string, error) {
+	vulnerdb := f.GetVulnerDB()
+
+	dir := filepath.Dir(vulnerdb)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", fmt.Errorf("创建目录失败: %w", err)
+	}
+	if _, err := os.Stat(vulnerdb); os.IsNotExist(err) {
+		file, err := os.Create(vulnerdb)
+		if err != nil {
+			return "", err
+		}
+		defer file.Close()
+	}
+	return vulnerdb, nil
 }

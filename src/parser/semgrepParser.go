@@ -100,10 +100,6 @@ func (s *SemgrepParser) getConfidenceLevel(confidence string) ConfidenceLevel {
 	}
 }
 
-// 获取 Module 字段 - 从文件路径和检查ID中提取模块信息
-// func (s *SemgrepParser) getModule(filePath string, checkID string) string {
-// }
-
 // 从 cwe 数组获取 CWE 字段
 func (s *SemgrepParser) getCWEID(cweList []string) string {
 	if len(cweList) == 0 {
@@ -145,9 +141,6 @@ func (s *SemgrepParser) convertIssuesToUnified(issue semgrepIssues) UnifiedVulne
 	// 获取CWE ID
 	cweID := s.getCWEID(issue.Extra.Metadata.Cwe)
 
-	// 获取模块信息
-	// module := p.getModule(issue.Path, issue.CheckID)
-
 	return UnifiedVulnerability{
 		Tool:            "semgrep",
 		WarningID:       issue.CheckID,
@@ -155,7 +148,6 @@ func (s *SemgrepParser) convertIssuesToUnified(issue semgrepIssues) UnifiedVulne
 		ShortMessage:    issue.Extra.Message,
 		CWEID:           cweID,
 		FilePath:        issue.Path,
-		Module:          "",
 		Range:           vulnRange,
 		SeverityLevel:   severityLevel,
 		ConfidenceLevel: confidenceLevel,
@@ -197,24 +189,4 @@ func (s *SemgrepParser) Parse() ([]UnifiedVulnerability, error) {
 
 func (p *SemgrepParser) GetName() string {
 	return "semgrepParser"
-}
-
-func (s *SemgrepParser) ParseToFile(output_file string) error {
-	// 读取并解析Semgrep报告
-	report, err := s.readReportToIssues(s.parseFilePath)
-	if err != nil {
-		return err
-	}
-
-	// 转换每个结果为统一格式
-	var unifiedVulns []UnifiedVulnerability
-	for _, issue := range report {
-		unifiedVuln := s.convertIssuesToUnified(issue)
-		unifiedVulns = append(unifiedVulns, unifiedVuln)
-	}
-
-	if err := StructsToJSONFile(unifiedVulns, output_file); err != nil {
-		return err
-	}
-	return nil
 }

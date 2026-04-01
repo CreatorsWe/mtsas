@@ -94,7 +94,6 @@ func (h *HorusecParser) convertIssuesToUnified(issues horusecIssues) UnifiedVuln
 		CWEID:           h.getCWEID(issues.Details),
 		SeverityLevel:   h.getSeverityLevel(issues.Severity),
 		ConfidenceLevel: h.getConfidenceLevel(issues.Confidence),
-		Module:          "",
 	}
 }
 
@@ -134,20 +133,4 @@ func (h *HorusecParser) Parse() ([]UnifiedVulnerability, error) {
 
 func (p *HorusecParser) GetName() string {
 	return "horusecParser"
-}
-
-func (h *HorusecParser) ParseToFile(output_file string) error {
-	vulnerabilities, err := h.readReportToIssues(h.parseFilePath)
-	if err != nil {
-		return err
-	}
-	var unifiedVulnerabilities []UnifiedVulnerability
-	for _, vulnerability := range vulnerabilities {
-		unifiedVulnerabilities = append(unifiedVulnerabilities, h.convertIssuesToUnified(vulnerability))
-	}
-
-	if err := StructsToJSONFile(unifiedVulnerabilities, output_file); err != nil {
-		return err
-	}
-	return nil
 }

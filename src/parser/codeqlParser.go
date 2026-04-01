@@ -211,7 +211,6 @@ func (c *CodeQLParser) convertIssuesToUnified(resultObj codeqlIssues, rules []ru
 		CWEID:           cweID,
 		SeverityLevel:   c.getSeverityLevel(props.ProblemSeverity),
 		ConfidenceLevel: c.getConfidenceLevel(props.Precision),
-		Module:          "",
 	}, nil
 }
 
@@ -241,32 +240,4 @@ func (c *CodeQLParser) Parse() ([]UnifiedVulnerability, error) {
 
 func (c *CodeQLParser) GetName() string {
 	return "codeqlParser"
-}
-
-func (c *CodeQLParser) ParseToFile(output_file string) error {
-	report, err := c.readReportToIssues(c.parseFilePath)
-	if err != nil {
-		return err
-	}
-
-	var unifiedVulnerabilities []UnifiedVulnerability
-
-	// 处理每个run（通常只有一个run）
-	for _, run := range report.Runs {
-
-		// 转换每个result
-		for _, result := range run.Results {
-			unifiedVuln, err := c.convertIssuesToUnified(result, run.Tool.Driver.Rules)
-			if err != nil {
-				return err
-			}
-			unifiedVulnerabilities = append(unifiedVulnerabilities, unifiedVuln)
-		}
-	}
-
-	if err := StructsToJSONFile(unifiedVulnerabilities, output_file); err != nil {
-		return err
-	}
-
-	return nil
 }

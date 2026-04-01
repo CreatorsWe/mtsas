@@ -78,7 +78,6 @@ func (c *CSAParser) convertIssuesToUnified(issues csaIssues) (UnifiedVulnerabili
 		ShortMessage: issues.Message,
 		CWEID:        cweID,
 		FilePath:     issues.FilePath,
-		Module:       "",
 		Range: Range{
 			StartLine:   NullableInt(issues.Line),
 			EndLine:     -1,
@@ -207,25 +206,4 @@ func (c *CSAParser) parseJumpIssues(jumpFilePath string) (*jumpIssues, error) {
 		Column:  column,
 		Message: message,
 	}, nil
-}
-
-func (c *CSAParser) ParseToFile(output_file string) error {
-	csaIssues, err := c.readReportToIssues(c.parseFilePath)
-	if err != nil {
-		return err
-	}
-
-	var unifiedVulnerabilities []UnifiedVulnerability
-	for _, issue := range csaIssues {
-		issues, err := c.convertIssuesToUnified(issue)
-		if err != nil {
-			return err
-		}
-		unifiedVulnerabilities = append(unifiedVulnerabilities, issues)
-	}
-
-	if err := StructsToJSONFile(unifiedVulnerabilities, output_file); err != nil {
-		return err
-	}
-	return nil
 }
