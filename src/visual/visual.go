@@ -30,7 +30,6 @@ func Visual(mtsasPath, projectName string) error {
 	http.HandleFunc(fmt.Sprintf("/%s", projectName), indexPageHandler)
 	http.HandleFunc("/mtsas/index-data/timestamps", indexDataHandler(projectName, numToTimestamps))
 	http.HandleFunc(fmt.Sprintf("/%s/vulner-data", projectName), vulnerDataHandler(numToDbPaths))
-	http.HandleFunc("/mtsas/code", codeHandler())
 
 	// 3. 启动 HTTP 服务
 	common.ConsoleLogger.Info("=== MTSAS 可视化服务启动成功 ===\n")
