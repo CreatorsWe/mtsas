@@ -25,11 +25,15 @@ func Visual(mtsasPath, projectName string) error {
 		return fmt.Errorf("visual error: %s", err)
 	}
 
+	const STATIC_PATH = `/home/PatrickStar/Downloads/github.project/mtsas/static/dist`
+
 	// 2. 注册路由
-	http.HandleFunc(fmt.Sprintf("/%s/index", projectName), indexPageHandler)
-	http.HandleFunc(fmt.Sprintf("/%s", projectName), indexPageHandler)
+	http.HandleFunc(fmt.Sprintf("/%s/index", projectName), indexPageHandler(STATIC_PATH))
+	http.HandleFunc(fmt.Sprintf("/%s", projectName), indexPageHandler(STATIC_PATH))
 	http.HandleFunc("/mtsas/index-data/timestamps", indexDataHandler(projectName, numToTimestamps))
 	http.HandleFunc(fmt.Sprintf("/%s/vulner-data", projectName), vulnerDataHandler(numToDbPaths))
+	// 2. 静态资源（js/css）从 dist/assets 加载
+	http.Handle("/assets/", http.FileServer(http.Dir(STATIC_PATH)))
 
 	// 3. 启动 HTTP 服务
 	common.ConsoleLogger.Info("=== MTSAS 可视化服务启动成功 ===\n")

@@ -2,10 +2,8 @@
 [pylint]
 name = "pylint"
 version = "4.0.4"
-path = 'D:\Python\Scripts\pylint.exe'  # 可执行文件包装机制
+path = ''  # 可执行文件包装机制
 supportedLanguages = ["python"]
-# environment = "python" # 环境变量寻找
-# environment = {name = "python", path = 'D:\Python\python.exe'}  # 明确路径
 args = [
     # "--rcfile", 'D:\Code\Project\Multi-tool_Static_Analysis_System_refactor\config\pylint_config.toml',  # 配置文件
     "--output-format", "json",
@@ -17,7 +15,7 @@ args = [
 [bandit]
 name = "bandit"
 version = "1.9.2"
-path = 'D:\Python\Scripts\bandit.exe'
+path = ''
 supportedLanguages = ["python"]
 args = [
     # "--configfile", 'D:\Code\Project\Multi-tool_Static_Analysis_System_refactor\tool-config\bandit_config.toml',
@@ -31,7 +29,7 @@ args = [
 [horusec]
 name = "horusec"
 version = "2.8.0"
-path = 'D:\SAT\horusec.exe'
+path = ''
 supportedLanguages=["python", "java", "Kotlin", "c#", "javascript", "typescript", "c", "ruby"]
 args = [
     "start",
@@ -49,7 +47,7 @@ args = [
 [semgrep]
 name = "semgrep"
 version = "1.149.0"
-path = 'D:\Python\Scripts\semgrep.exe'
+path = ''
 supportedLanguages = ["python", "java", "c", "c++", "c#", "kotlin", "javascript", "typescript", "ruby"]
 args = [
     "scan",
@@ -78,19 +76,19 @@ args = [
 [insider]  # 不能指定生成 json 文件的路径，所以只能在指定目录调用工具
 name = "insider"
 version = "3.0.0"
-path = 'D:\SAT\insider.exe'
+path = '/home/PatrickStar/Downloads/github.project/mtsas/scan-tools/insider'
 supportedLanguages = ["java", "kotlin", "javascript", "c#"]
 args = [
     "-tech", "{language_type}",
     "-no-html",
-    "-target", "{scan_files}"
+    "-target", "{target_dir}"
 ]
 
 
 [cppcheck]
 name = "cppcheck"
 version = "2.19.0"
-path = 'D:\SAT\cppcheck\cppcheck.exe'
+path = ''
 supportedLanguages = ["c", "c++"]
 args = [
     "--enable=all",
@@ -102,7 +100,7 @@ args = [
 
 
 [cwe_mapping]
-path='D:\Code\Project\Multi-tool_Static_Analysis_System_refactor\database\cwe_mapping.sqlite3'
+path='/home/PatrickStar/Downloads/github.project/mtsas/database/cwe_mapping.sqlite3'
 maps = [
     {toolName = "pylint", tableName = "pylint_mapping"},
     {toolName = "cppcheck", tableName = "cppcheck_mapping"},

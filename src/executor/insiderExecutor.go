@@ -47,11 +47,11 @@ type InsiderExecutor[T Tech] struct {
 }
 
 // 占位符替换
-func (i *InsiderExecutor[T]) replaceCommand(scan_files []string) error {
+func (i *InsiderExecutor[T]) replaceCommand(target_dir string) error {
 
 	// 替换占位符
 	i.Command = strings.ReplaceAll(i.Command, "{language_type}", string(i.tech.GetTechName()))
-	i.Command = strings.ReplaceAll(i.Command, "{scan_files}", strings.Join(scan_files, " "))
+	i.Command = strings.ReplaceAll(i.Command, "{target_dir}", target_dir)
 
 	// 检查是否还有未定义占位符
 	if strings.Contains(i.Command, "{") && strings.Contains(i.Command, "}") {
@@ -67,7 +67,7 @@ func (i *InsiderExecutor[T]) replaceCommand(scan_files []string) error {
 }
 
 // NewInsiderExecutor 创建新的 InsiderExecutor 实例，在初始化时完成命令替换
-func NewInsiderExecutor[T Tech](toolinfo ToolInfo, work_dir string, scan_files []string) (*InsiderExecutor[T], error) {
+func NewInsiderExecutor[T Tech](toolinfo ToolInfo, work_dir string, target_dir string) (*InsiderExecutor[T], error) {
 	t := T{}
 	InsiderExecutor := &InsiderExecutor[T]{
 		ToolInfo: ToolInfo{
@@ -83,7 +83,7 @@ func NewInsiderExecutor[T Tech](toolinfo ToolInfo, work_dir string, scan_files [
 	}
 
 	// 占位符替换
-	if err := InsiderExecutor.replaceCommand(scan_files); err != nil {
+	if err := InsiderExecutor.replaceCommand(target_dir); err != nil {
 		return nil, err
 	}
 	return InsiderExecutor, nil

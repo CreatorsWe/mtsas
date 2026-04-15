@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 
 	. "github.com/mtsas/common"
@@ -35,11 +36,13 @@ type horusecIssues struct {
 // HorusecParser 实现Parser接口
 type HorusecParser struct {
 	parseFilePath string
+	scan_dir      string
 }
 
-func NewHorusecParser(parseFilePath string) *HorusecParser {
+func NewHorusecParser(parseFilePath string, scan_dir string) *HorusecParser {
 	return &HorusecParser{
 		parseFilePath: parseFilePath,
+		scan_dir:      scan_dir,
 	}
 }
 
@@ -84,7 +87,7 @@ func (h *HorusecParser) convertIssuesToUnified(issues horusecIssues) UnifiedVuln
 		WarningID:    issues.RuleID,
 		Category:     issues.Type,
 		ShortMessage: issues.Details,
-		FilePath:     issues.File,
+		FilePath:     filepath.Join(h.scan_dir, issues.File),
 		Range: Range{
 			StartLine:   issues.Line,
 			EndLine:     -1,

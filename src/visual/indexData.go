@@ -28,6 +28,8 @@ func readTimestamps(mtsas_path, project_name string) (NumToTimestamps, NumToDbPa
 
 	// ========== 步骤2：校验项目目录是否存在 ==========
 	projectDir := filepath.Join(mtsas_path, project_name)
+
+	fmt.Println(projectDir)
 	if _, err := os.Stat(projectDir); os.IsNotExist(err) {
 		e = fmt.Errorf("没有 %s 项目", project_name)
 		return

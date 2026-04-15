@@ -59,7 +59,7 @@ type SystemConfigParser struct {
 
 func NewSystemConfigParser() *SystemConfigParser {
 	return &SystemConfigParser{
-		systemConfigPath: `D:\Code\Project\Multi-tool_Static_Analysis_System_refactor\mtsas.conf.toml`,
+		systemConfigPath: `/home/PatrickStar/Downloads/github.project/mtsas/mtsas.conf.toml`,
 	}
 }
 

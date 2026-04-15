@@ -232,7 +232,7 @@ func (s *Scheduler) initExecutorAndParser(toolName string, paths []string) (Exec
 			return nil, nil, err
 		}
 		report_path := horusecExecutor.GetReportPath()
-		horusecParser := parser.NewHorusecParser(report_path)
+		horusecParser := parser.NewHorusecParser(report_path, s.flagResult.ScanDir)
 
 		return horusecExecutor, horusecParser, nil
 	case "semgrep":
@@ -246,7 +246,7 @@ func (s *Scheduler) initExecutorAndParser(toolName string, paths []string) (Exec
 		return semgrepExecutor, semgrepParser, nil
 	case "insider:java":
 		// 获取 work_dir，即 tmp_dir
-		insiderExecutor, err := executor.NewInsiderExecutor[executor.TechJava](s.sysConfigResult.Tools["insider"], tmpDir, paths)
+		insiderExecutor, err := executor.NewInsiderExecutor[executor.TechJava](s.sysConfigResult.Tools["insider"], tmpDir, s.flagResult.ScanDir)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -256,7 +256,7 @@ func (s *Scheduler) initExecutorAndParser(toolName string, paths []string) (Exec
 		return insiderExecutor, insiderParser, nil
 	case "insider:javascript":
 		// 获取 work_dir，即 tmp_dir
-		insiderExecutor, err := executor.NewInsiderExecutor[executor.TechJs](s.sysConfigResult.Tools["insider"], tmpDir, paths)
+		insiderExecutor, err := executor.NewInsiderExecutor[executor.TechJs](s.sysConfigResult.Tools["insider"], tmpDir, s.flagResult.ScanDir)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -266,7 +266,7 @@ func (s *Scheduler) initExecutorAndParser(toolName string, paths []string) (Exec
 		return insiderExecutor, insiderParser, nil
 	case "insider:csharp":
 		// 获取 work_dir，即 tmp_dir
-		insiderExecutor, err := executor.NewInsiderExecutor[executor.TechCsharp](s.sysConfigResult.Tools["insider"], tmpDir, paths)
+		insiderExecutor, err := executor.NewInsiderExecutor[executor.TechCsharp](s.sysConfigResult.Tools["insider"], tmpDir, s.flagResult.ScanDir)
 		if err != nil {
 			return nil, nil, err
 		}

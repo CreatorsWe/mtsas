@@ -17,7 +17,7 @@ func NewFlagParser() *FlagParser {
 
 func (fp *FlagParser) ParseFlags() (any, error) {
 	if len(os.Args) < 2 {
-		return nil, fmt.Errorf("必须提供子命令: scan, visual 或 map")
+		return nil, fmt.Errorf("必须提供子命令: scan, visual")
 	}
 
 	subcommand := os.Args[1]
@@ -27,10 +27,8 @@ func (fp *FlagParser) ParseFlags() (any, error) {
 		return fp.parseScanFlags()
 	case "visual":
 		return fp.parseVisualFlags()
-	case "map":
-		return fp.parseMapFlags()
 	default:
-		return nil, fmt.Errorf("未知子命令: %s，支持的命令: scan, visual, map", subcommand)
+		return nil, fmt.Errorf("未知子命令: %s，支持的命令: scan, visual", subcommand)
 	}
 }
 
@@ -40,12 +38,11 @@ func (fp *FlagParser) parseScanFlags() (*ScanFlag, error) {
 
 	// 定义 scan 子命令的参数
 	var (
-		projectName   = scanCmd.String("name", "", "项目名称（必须）")
-		outputDir     = scanCmd.String("output-dir", ".", "输出目录路径，默认为 .mtsas")
-		outputFormat  = scanCmd.String("format", "json", "输出文件格式: json, csv")
-		projectConfig = scanCmd.String("config", "", "项目配置文件路径（toml 格式）")
-		isQuiet       = scanCmd.Bool("quiet", false, "静默模式，控制台不输出除 Error 外的任何信息")
-		excludeDirs   = scanCmd.String("exclude", "", "要排除的目录，多个目录用逗号分隔")
+		projectName  = scanCmd.String("name", "", "项目名称（必须）")
+		outputDir    = scanCmd.String("output-dir", ".", "输出目录路径，默认为 .mtsas")
+		outputFormat = scanCmd.String("format", "json", "输出文件格式: json, csv")
+		isQuiet      = scanCmd.Bool("quiet", false, "静默模式，控制台不输出除 Error 外的任何信息")
+		excludeDirs  = scanCmd.String("exclude", "", "要排除的目录，多个目录用逗号分隔")
 	)
 
 	// 自定义用法信息
@@ -116,14 +113,13 @@ func (fp *FlagParser) parseScanFlags() (*ScanFlag, error) {
 
 	// 构建 ScanFlag 对象
 	flagObj := &ScanFlag{
-		ProjectName:   *projectName,
-		OutputDir:     absOutputDir,
-		OutputFormat:  *outputFormat,
-		ScanDir:       scanDir,
-		ScanFiles:     scanFiles,
-		Exclude:       excludedDirs,
-		ProjectConfig: *projectConfig,
-		IsQuiet:       *isQuiet,
+		ProjectName:  *projectName,
+		OutputDir:    absOutputDir,
+		OutputFormat: *outputFormat,
+		ScanDir:      scanDir,
+		ScanFiles:    scanFiles,
+		Exclude:      excludedDirs,
+		IsQuiet:      *isQuiet,
 	}
 
 	return flagObj, nil
@@ -169,30 +165,6 @@ func (fp *FlagParser) parseVisualFlags() (*VisualFlag, error) {
 	}
 
 	return flagObj, nil
-}
-
-// parseMapFlags 处理 mtsas map 子命令
-func (fp *FlagParser) parseMapFlags() (*MapFlag, error) {
-	mapCmd := flag.NewFlagSet("map", flag.ExitOnError)
-
-	// 自定义用法信息
-	mapCmd.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "用法: %s map\n\n", os.Args[0])
-		fmt.Fprintf(flag.CommandLine.Output(), "可视化cwe预映射表\n\n")
-	}
-
-	// 解析 map 子命令参数
-	if err := mapCmd.Parse(os.Args[2:]); err != nil {
-		return nil, err
-	}
-
-	// 检查是否有额外的参数
-	if len(mapCmd.Args()) > 0 {
-		return nil, fmt.Errorf("map 子命令不需要额外参数")
-	}
-
-	// 构建 MapFlag 对象
-	return &MapFlag{}, nil
 }
 
 // 原有的辅助函数保持不变

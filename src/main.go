@@ -47,7 +47,5 @@ func main() {
 			ConsoleLogger.Error(fmt.Sprintf("可视化失败: %s", err))
 		}
 		select {}
-	case *MapFlag:
-		fmt.Println("可视化 cwe 预映射表命令")
 	}
 }
