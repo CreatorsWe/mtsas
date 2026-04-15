@@ -30,23 +30,18 @@ func NewDbManager(dbPath string) (*DbManager, error) {
 	createTableSQL := `
 	CREATE TABLE IF NOT EXISTS db_vulnerabilities (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		hash TEXT,
-		scope_offset_id TEXT NOT NULL,
-		optimal_scope_start INTEGER NOT NULL,
-		optimal_scope_end INTEGER NOT NULL,
-		warning_count INTEGER NOT NULL,
 		tool TEXT NOT NULL,
 		warning_id TEXT NOT NULL,
 		category TEXT NOT NULL,
 		short_message TEXT NOT NULL,
-		cwe_id TEXT,
+		cwe_id INTEGER NOT NULL,
 		file_path TEXT NOT NULL,
-		range_start_line INTEGER NOT NULL,
-		range_end_line INTEGER NOT NULL,
-		range_start_column INTEGER NOT NULL,
-		range_end_column INTEGER NOT NULL,
+		line INTEGER NOT NULL,
 		severity_level TEXT NOT NULL,
-		confidence_level TEXT NOT NULL
+		confidence_level TEXT NOT NULL,
+		warning_count INTEGER NOT NULL,
+		score INTEGER NOT NULL,
+		hash TEXT NOT NULL
 	);`
 
 	_, err = db.Exec(createTableSQL)
@@ -66,30 +61,24 @@ func (m *DbManager) Close() error {
 func (m *DbManager) InsertVulnerability(dbVuln DbVulnerability) (int64, error) {
 	insertSQL := `
 	INSERT INTO db_vulnerabilities (
-		hash, scope_offset_id, optimal_scope_start, optimal_scope_end,warning_count,
 		tool, warning_id, category, short_message, cwe_id, file_path,
-		range_start_line, range_end_line, range_start_column, range_end_column,
-		severity_level, confidence_level
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`
+		line, severity_level, confidence_level, warning_count, score, hash
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`
 
 	result, err := m.db.Exec(
 		insertSQL,
-		dbVuln.Hash,
-		dbVuln.ScopeOffsetID,
-		dbVuln.OptimalScope.Start,
-		dbVuln.OptimalScope.End,
 		dbVuln.Vulnerabilities.Tool,
 		dbVuln.Vulnerabilities.WarningID,
 		dbVuln.Vulnerabilities.Category,
 		dbVuln.Vulnerabilities.ShortMessage,
 		dbVuln.Vulnerabilities.CWEID,
 		dbVuln.Vulnerabilities.FilePath,
-		dbVuln.Vulnerabilities.Range.StartLine.Int(),
-		dbVuln.Vulnerabilities.Range.EndLine.Int(),
-		dbVuln.Vulnerabilities.Range.StartColumn.Int(),
-		dbVuln.Vulnerabilities.Range.EndColumn.Int(),
+		dbVuln.Vulnerabilities.Line,
 		dbVuln.Vulnerabilities.SeverityLevel,
 		dbVuln.Vulnerabilities.ConfidenceLevel,
+		dbVuln.WarningCount,
+		dbVuln.Score,
+		dbVuln.Hash,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("插入数据失败: %w", err)
@@ -103,40 +92,38 @@ func (m *DbManager) InsertVulnerability(dbVuln DbVulnerability) (int64, error) {
 	return id, nil
 }
 
-// QueryHasNonEmptyHash 查询hash不为空的条目
-func (m *DbManager) QueryHasNonEmptyHash() ([]DbVulnerability, error) {
+// QueryHasCWEVulns 查询 cwe 不为空的条目(参与排序)
+func (m *DbManager) QueryHasCWEVulns() ([]DbVulnerability, error) {
 	querySQL := `
 	SELECT
-		id, hash, scope_offset_id, optimal_scope_start, optimal_scope_end,warning_count,
 		tool, warning_id, category, short_message, cwe_id, file_path,
-		range_start_line, range_end_line, range_start_column, range_end_column,
-		severity_level, confidence_level
+		line, severity_level, confidence_level, warning_count, score, hash
 	FROM db_vulnerabilities
-	WHERE hash IS NOT NULL AND hash != '';`
+	WHERE cwe_id != -1
+	ORDER BY score DESC;`
 
 	rows, err := m.db.Query(querySQL)
 	if err != nil {
-		return nil, fmt.Errorf("查询hash非空数据失败: %w", err)
+		return nil, fmt.Errorf("查询 cwe 非空数据失败: %w", err)
 	}
 	defer rows.Close()
 
 	return scanDbVulnerabilities(rows)
 }
 
-// QueryHasEmptyHash 查询hash为空的条目
-func (m *DbManager) QueryHasEmptyHash() ([]DbVulnerability, error) {
+// QueryEmptyCWEVulns 查询 cwe 为空的条目
+func (m *DbManager) QueryEmptyCWEVulns() ([]DbVulnerability, error) {
 	querySQL := `
 	SELECT
-		id, hash, scope_offset_id, optimal_scope_start, optimal_scope_end,warning_count,
 		tool, warning_id, category, short_message, cwe_id, file_path,
-		range_start_line, range_end_line, range_start_column, range_end_column,
-		severity_level, confidence_level
+		line, severity_level, confidence_level, warning_count, score, hash
 	FROM db_vulnerabilities
-	WHERE hash IS NULL OR hash = '';`
+	WHERE cwe_id = -1
+	ORDER BY score DESC;`
 
 	rows, err := m.db.Query(querySQL)
 	if err != nil {
-		return nil, fmt.Errorf("查询hash为空数据失败: %w", err)
+		return nil, fmt.Errorf("查询 cwe 为空数据失败: %w", err)
 	}
 	defer rows.Close()
 
@@ -167,11 +154,9 @@ func (m *DbManager) BatchInsertVulnerabilities(vulns []DbVulnerability) (int, []
 	// 2. 预处理插入语句（核心优化点：避免重复编译SQL）
 	insertSQL := `
 	INSERT INTO db_vulnerabilities (
-		hash, scope_offset_id, optimal_scope_start, optimal_scope_end,warning_count,
 		tool, warning_id, category, short_message, cwe_id, file_path,
-		range_start_line, range_end_line, range_start_column, range_end_column,
-		severity_level, confidence_level
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`
+		line, severity_level, confidence_level, warning_count, score, hash
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`
 
 	stmt, err := tx.Prepare(insertSQL)
 	if err != nil {
@@ -185,23 +170,18 @@ func (m *DbManager) BatchInsertVulnerabilities(vulns []DbVulnerability) (int, []
 	ids := make([]int64, 0, len(vulns)) // 预分配切片容量，减少内存分配
 	for _, vuln := range vulns {
 		result, err := stmt.Exec(
-			vuln.Hash,
-			vuln.ScopeOffsetID,
-			vuln.OptimalScope.Start,
-			vuln.OptimalScope.End,
-			vuln.WarningCount,
 			vuln.Vulnerabilities.Tool,
 			vuln.Vulnerabilities.WarningID,
 			vuln.Vulnerabilities.Category,
 			vuln.Vulnerabilities.ShortMessage,
 			vuln.Vulnerabilities.CWEID,
 			vuln.Vulnerabilities.FilePath,
-			vuln.Vulnerabilities.Range.StartLine.Int(),
-			vuln.Vulnerabilities.Range.EndLine.Int(),
-			vuln.Vulnerabilities.Range.StartColumn.Int(),
-			vuln.Vulnerabilities.Range.EndColumn.Int(),
+			vuln.Vulnerabilities.Line,
 			vuln.Vulnerabilities.SeverityLevel,
 			vuln.Vulnerabilities.ConfidenceLevel,
+			vuln.WarningCount,
+			vuln.Score,
+			vuln.Hash,
 		)
 		if err != nil {
 			_ = tx.Rollback()
@@ -227,83 +207,30 @@ func (m *DbManager) BatchInsertVulnerabilities(vulns []DbVulnerability) (int, []
 	return insertedCount, ids, nil
 }
 
-// UpdateCWEIDAndHash 更新指定ID条目的cwe_id和hash值
-func (m *DbManager) UpdateCWEIDAndHash(id int64, newCWEID, newHash string) error {
-	updateSQL := `
-	UPDATE db_vulnerabilities
-	SET cwe_id = ?, hash = ?
-	WHERE id = ?;`
-
-	result, err := m.db.Exec(updateSQL, newCWEID, newHash, id)
-	if err != nil {
-		return fmt.Errorf("更新数据失败: %w", err)
-	}
-
-	// 检查是否有行被更新
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("检查更新行数失败: %w", err)
-	}
-	if rowsAffected == 0 {
-		return fmt.Errorf("未找到ID为%d的条目", id)
-	}
-
-	return nil
-}
-
-// DeleteVulnerability 删除指定ID的条目
-func (m *DbManager) DeleteVulnerability(id int64) error {
-	deleteSQL := `DELETE FROM db_vulnerabilities WHERE id = ?;`
-
-	result, err := m.db.Exec(deleteSQL, id)
-	if err != nil {
-		return fmt.Errorf("删除数据失败: %w", err)
-	}
-
-	// 检查是否有行被删除
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("检查删除行数失败: %w", err)
-	}
-	if rowsAffected == 0 {
-		return fmt.Errorf("未找到ID为%d的条目", id)
-	}
-
-	return nil
-}
-
 // scanDbVulnerabilities 通用行扫描函数，将查询结果转为DbVulnerability切片
 func scanDbVulnerabilities(rows *sql.Rows) ([]DbVulnerability, error) {
 	var vulns []DbVulnerability
 
 	for rows.Next() {
 		var (
-			id                int64
-			hash              sql.NullString
-			scopeOffsetID     string
-			optimalScopeStart int
-			optimalScopeEnd   int
-			warningCount      int
-			tool              string
-			warningID         string
-			category          string
-			shortMessage      string
-			cweID             sql.NullString
-			filePath          string
-			rangeStartLine    int
-			rangeEndLine      int
-			rangeStartColumn  int
-			rangeEndColumn    int
-			severityLevel     string
-			confidenceLevel   string
+			tool            string
+			warningID       string
+			category        string
+			shortMessage    string
+			cweID           int
+			filePath        string
+			line            int
+			severityLevel   string
+			confidenceLevel string
+			warningCount    int
+			score           float64
+			hash            string
 		)
 
 		// 扫描行数据到变量
 		err := rows.Scan(
-			&id, &hash, &scopeOffsetID, &optimalScopeStart, &optimalScopeEnd, &warningCount,
 			&tool, &warningID, &category, &shortMessage, &cweID, &filePath,
-			&rangeStartLine, &rangeEndLine, &rangeStartColumn, &rangeEndColumn,
-			&severityLevel, &confidenceLevel,
+			&line, &severityLevel, &confidenceLevel, &warningCount, &score, &hash,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("扫描行数据失败: %w", err)
@@ -311,29 +238,20 @@ func scanDbVulnerabilities(rows *sql.Rows) ([]DbVulnerability, error) {
 
 		// 构造DbVulnerability结构体
 		dbVuln := DbVulnerability{
-			Hash:          hash.String, // sql.NullString自动处理null值
-			ScopeOffsetID: scopeOffsetID,
-			OptimalScope: ScopeRange{
-				Start: optimalScopeStart,
-				End:   optimalScopeEnd,
-			},
-			WarningCount: warningCount,
 			Vulnerabilities: UnifiedVulnerability{
-				Tool:         tool,
-				WarningID:    warningID,
-				Category:     category,
-				ShortMessage: shortMessage,
-				CWEID:        cweID.String, // 空值自动转为""
-				FilePath:     filePath,
-				Range: Range{
-					StartLine:   NullableInt(rangeStartLine),
-					EndLine:     NullableInt(rangeEndLine),
-					StartColumn: NullableInt(rangeStartColumn),
-					EndColumn:   NullableInt(rangeEndColumn),
-				},
+				Tool:            tool,
+				WarningID:       warningID,
+				Category:        category,
+				ShortMessage:    shortMessage,
+				CWEID:           cweID,
+				FilePath:        filePath,
+				Line:            line,
 				SeverityLevel:   SeverityLevel(severityLevel),
 				ConfidenceLevel: ConfidenceLevel(confidenceLevel),
 			},
+			WarningCount: warningCount,
+			Score:        score,
+			Hash:         hash,
 		}
 
 		vulns = append(vulns, dbVuln)
@@ -351,41 +269,32 @@ func scanDbVulnerabilities(rows *sql.Rows) ([]DbVulnerability, error) {
 func (m *DbManager) GetVulnerabilityByID(id int64) (DbVulnerability, error) {
 	querySQL := `
 	SELECT
-		id, hash, scope_offset_id, optimal_scope_start, optimal_scope_end,warning_count,
-		tool, warning_id, category, short_message, cwe_id, file_path,
-		range_start_line, range_end_line, range_start_column, range_end_column,
-		severity_level, confidence_level
+		id, tool, warning_id, category, short_message, cwe_id, file_path,
+		line, severity_level, confidence_level, warning_count, score, hash
 	FROM db_vulnerabilities
 	WHERE id = ?;`
 
 	row := m.db.QueryRow(querySQL, id)
 
 	var (
-		dbVuln            DbVulnerability
-		hash              sql.NullString
-		scopeOffsetID     string
-		optimalScopeStart int
-		optimalScopeEnd   int
-		warningCount      int
-		tool              string
-		warningID         string
-		category          string
-		shortMessage      string
-		cweID             sql.NullString
-		filePath          string
-		rangeStartLine    int
-		rangeEndLine      int
-		rangeStartColumn  int
-		rangeEndColumn    int
-		severityLevel     string
-		confidenceLevel   string
+		dbVuln          DbVulnerability
+		tool            string
+		warningID       string
+		category        string
+		shortMessage    string
+		cweID           int
+		filePath        string
+		line            int
+		severityLevel   string
+		confidenceLevel string
+		warningCount    int
+		score           float64
+		hash            string
 	)
 
 	err := row.Scan(
-		&id, &hash, &scopeOffsetID, &optimalScopeStart, &optimalScopeEnd, &warningCount,
-		&tool, &warningID, &category, &shortMessage, &cweID, &filePath,
-		&rangeStartLine, &rangeEndLine, &rangeStartColumn, &rangeEndColumn,
-		&severityLevel, &confidenceLevel,
+		&id, &tool, &warningID, &category, &shortMessage, &cweID, &filePath,
+		&line, &severityLevel, &confidenceLevel, &warningCount, &score, &hash,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -395,29 +304,20 @@ func (m *DbManager) GetVulnerabilityByID(id int64) (DbVulnerability, error) {
 	}
 
 	dbVuln = DbVulnerability{
-		Hash:          hash.String,
-		ScopeOffsetID: scopeOffsetID,
-		OptimalScope: ScopeRange{
-			Start: optimalScopeStart,
-			End:   optimalScopeEnd,
-		},
-		WarningCount: warningCount,
 		Vulnerabilities: UnifiedVulnerability{
-			Tool:         tool,
-			WarningID:    warningID,
-			Category:     category,
-			ShortMessage: shortMessage,
-			CWEID:        cweID.String,
-			FilePath:     filePath,
-			Range: Range{
-				StartLine:   NullableInt(rangeStartLine),
-				EndLine:     NullableInt(rangeEndLine),
-				StartColumn: NullableInt(rangeStartColumn),
-				EndColumn:   NullableInt(rangeEndColumn),
-			},
+			Tool:            tool,
+			WarningID:       warningID,
+			Category:        category,
+			ShortMessage:    shortMessage,
+			CWEID:           cweID,
+			FilePath:        filePath,
+			Line:            line,
 			SeverityLevel:   SeverityLevel(severityLevel),
 			ConfidenceLevel: ConfidenceLevel(confidenceLevel),
 		},
+		Hash:         hash,
+		WarningCount: warningCount,
+		Score:        score,
 	}
 
 	return dbVuln, nil

@@ -13,7 +13,7 @@ import (
 
 type mapRecord struct {
 	message_id string
-	cwe_id     string
+	cwe_id     int
 }
 
 type CWEMapper struct {
@@ -85,11 +85,11 @@ func (m *CWEMapper) initDB() error {
 }
 
 // 查询记录:在指定工具映射表中根据 message_id 查询 cwe_id（改进版本）
-func (m *CWEMapper) QueryRecord(toolName string, message_id string) (string, error) {
+func (m *CWEMapper) QueryRecord(toolName string, message_id string) (int, error) {
 	if !m.IsLoaded(toolName) {
 		err := m.loadToolMapping(toolName)
 		if err != nil {
-			return "", fmt.Errorf("加载工具 %s 的映射失败: %v", toolName, err)
+			return -1, fmt.Errorf("加载工具 %s 的映射失败: %v", toolName, err)
 		}
 	}
 	m.mu.Lock()
@@ -98,15 +98,15 @@ func (m *CWEMapper) QueryRecord(toolName string, message_id string) (string, err
 	if records, exists := m.loadResult[toolName]; exists {
 		for _, record := range records {
 			if record.message_id == message_id {
-				ConsoleLogger.Info(fmt.Sprintf("cweMapper 查询: %s message_id: %s 匹配 cwe_id: %s", toolName, message_id, record.cwe_id))
+				ConsoleLogger.Info(fmt.Sprintf("cweMapper 查询: %s message_id: %s 匹配 cwe_id: %d", toolName, message_id, record.cwe_id))
 				return record.cwe_id, nil
 			}
 		}
 		// 加载后仍然没有找到
-		return "", nil
+		return -1, nil
 	}
 
-	return "", fmt.Errorf("工具 %s 的映射加载后仍然不可用", toolName)
+	return -1, fmt.Errorf("工具 %s 的映射加载后仍然不可用", toolName)
 }
 
 // 加载单个工具的映射（内部方法）

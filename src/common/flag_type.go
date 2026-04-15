@@ -14,5 +14,3 @@ type VisualFlag struct {
 	ProjectName string
 	OutputDir   string
 }
-
-type MapFlag struct{}

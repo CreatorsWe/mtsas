@@ -31,7 +31,7 @@ func Visual(mtsasPath, projectName string) error {
 	http.HandleFunc(fmt.Sprintf("/%s/index", projectName), indexPageHandler(STATIC_PATH))
 	http.HandleFunc(fmt.Sprintf("/%s", projectName), indexPageHandler(STATIC_PATH))
 	http.HandleFunc("/mtsas/index-data/timestamps", indexDataHandler(projectName, numToTimestamps))
-	http.HandleFunc(fmt.Sprintf("/%s/vulner-data", projectName), vulnerDataHandler(numToDbPaths))
+	http.HandleFunc("/mtsas/vulner-data", vulnerDataHandler(numToDbPaths))
 	// 2. 静态资源（js/css）从 dist/assets 加载
 	http.Handle("/assets/", http.FileServer(http.Dir(STATIC_PATH)))
 

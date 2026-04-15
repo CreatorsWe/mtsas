@@ -10,10 +10,10 @@ import (
 
 type PylintParser struct {
 	parseFilePath  string
-	queryInterface func(string, string) (string, error)
+	queryInterface func(string, string) (int, error)
 }
 
-func NewPylintParser(parseFilePath string, query func(string, string) (string, error)) *PylintParser {
+func NewPylintParser(parseFilePath string, query func(string, string) (int, error)) *PylintParser {
 	return &PylintParser{
 		parseFilePath:  parseFilePath,
 		queryInterface: query,
@@ -22,16 +22,13 @@ func NewPylintParser(parseFilePath string, query func(string, string) (string, e
 
 // PylintIssue 定义 Pylint JSON 报告的结构体
 type pylintIssues struct {
-	Type      string      `json:"type"`
-	Obj       string      `json:"obj"` // 类/函数名，补充模块路径
-	Line      NullableInt `json:"line"`
-	Column    NullableInt `json:"column"`
-	EndLine   NullableInt `json:"endLine"`
-	EndColumn NullableInt `json:"endColumn"`
-	Path      string      `json:"path"`
-	Symbol    string      `json:"symbol"`
-	Message   string      `json:"message"`
-	MessageID string      `json:"message-id"`
+	Type      string `json:"type"`
+	Obj       string `json:"obj"` // 类/函数名，补充模块路径
+	Line      int    `json:"line"`
+	Path      string `json:"path"`
+	Symbol    string `json:"symbol"`
+	Message   string `json:"message"`
+	MessageID string `json:"message-id"`
 }
 
 // 将 pylint type 字段映射为 unified severity_level 字段
@@ -71,7 +68,7 @@ func (p *PylintParser) getConfidenceLevel(typeField string) ConfidenceLevel {
 }
 
 // 获取 CWE 字段
-func (p *PylintParser) getCWEID(messageID string) (string, error) {
+func (p *PylintParser) getCWEID(messageID string) (int, error) {
 	return p.queryInterface("pylint", messageID)
 }
 
@@ -83,17 +80,12 @@ func (p *PylintParser) convertIssuesToUnified(issue pylintIssues) (UnifiedVulner
 	}
 
 	return UnifiedVulnerability{
-		Tool:         "pylint", // 固定为pylint
-		WarningID:    issue.MessageID,
-		Category:     issue.Type,
-		ShortMessage: issue.Message,
-		FilePath:     issue.Path,
-		Range: Range{
-			StartLine:   issue.Line,
-			EndLine:     issue.EndLine,
-			StartColumn: issue.Column,
-			EndColumn:   issue.EndColumn,
-		},
+		Tool:            "pylint", // 固定为pylint
+		WarningID:       issue.MessageID,
+		Category:        issue.Type,
+		ShortMessage:    issue.Message,
+		FilePath:        issue.Path,
+		Line:            issue.Line,
 		CWEID:           cweID,
 		SeverityLevel:   p.getSeverityLevel(issue.Type),
 		ConfidenceLevel: p.getConfidenceLevel(issue.Type),

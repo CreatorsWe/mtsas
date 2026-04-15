@@ -24,7 +24,7 @@ type Scheduler struct {
 	fileManager     *fileManager.FileManager
 	sysConfigResult *systemConfigParser.SystemConfigResult
 	tools           map[Executor]Parser
-	queryInterface  func(string, string) (string, error)
+	queryInterface  func(string, string) (int, error)
 }
 
 // NewScheduler 创建调度器
@@ -95,19 +95,64 @@ func (s *Scheduler) Scheduler() {
 	wg.Wait()
 	ConsoleLogger.Info("所有工具执行完成")
 
-	// 获取 dbVulnerabilities
-	var dbVulnerabilities []DbVulnerability = make([]DbVulnerability, 0)
+	// 去重
+	var final_dbVulnerabilities []DbVulnerability = make([]DbVulnerability, 0)
+	// 有 cwe 的漏洞，计算 hash 去重
+	var m_hash_vuln map[string]DbVulnerability = make(map[string]DbVulnerability)
+	// 1. 分离有无 cwe 的漏洞
+	// 2. 对有 cwe 的漏洞计算 hash ，得到 map[hash][DbVulner] 如果 hash 相同去重
+	// 3. 合并所有漏洞
 	for _, vuln := range unifiedVulnerabilities {
-		dbvuln, err := featureExtractor.GetFeatureVuln(&vuln)
-		if err != nil {
-			ConsoleLogger.Warning(fmt.Sprintf("计算漏洞特征失败: %s,丢弃该漏洞: %+v", err, vuln))
-			continue
+		if vuln.CWEID == -1 {
+			// 计算得分
+			dbvuln := DbVulnerability{
+				Vulnerabilities: vuln,
+				WarningCount:    1,
+				Hash:            "",
+				Score:           utility.GetScore(vuln.SeverityLevel, vuln.ConfidenceLevel, 1),
+			}
+			final_dbVulnerabilities = append(final_dbVulnerabilities, dbvuln)
+		} else {
+			hash, err := featureExtractor.GetFeatureVuln(vuln.FilePath, vuln.Line, vuln.CWEID)
+			if err != nil {
+				ConsoleLogger.Warning(fmt.Sprintf("计算漏洞特征失败: %s,丢弃该漏洞: %+v", err, vuln))
+				continue
+			}
+			if old, exists := m_hash_vuln[hash]; !exists {
+				m_hash_vuln[hash] = DbVulnerability{
+					Vulnerabilities: vuln,
+					WarningCount:    1,
+					Hash:            hash,
+					Score:           utility.GetScore(vuln.SeverityLevel, vuln.ConfidenceLevel, 1),
+				}
+			} else {
+				// 计算 old 和 vuln 的得分，取分高者
+				old_score := utility.GetScore(old.Vulnerabilities.SeverityLevel, old.Vulnerabilities.ConfidenceLevel, 1)
+				new_score := utility.GetScore(vuln.SeverityLevel, vuln.ConfidenceLevel, 1)
+				if new_score > old_score {
+					m_hash_vuln[hash] = DbVulnerability{
+						Vulnerabilities: vuln,
+						WarningCount:    old.WarningCount + 1,
+						Hash:            hash,
+						Score:           -1, // 暂时不计分
+					}
+				} else {
+					m_hash_vuln[hash] = DbVulnerability{
+						Vulnerabilities: old.Vulnerabilities,
+						WarningCount:    old.WarningCount + 1,
+						Hash:            hash,
+						Score:           -1,
+					}
+				}
+			}
 		}
-		dbVulnerabilities = append(dbVulnerabilities, *dbvuln)
 	}
 
-	// 对 dbVulnerabilities 重复 hash 进行去重
-	unique_dbVulnerabilities, err := utility.DedupDbVulnerabilities(dbVulnerabilities)
+	// 对 m_hash_vuln 计算得分后并入 final_dbVulnerabilities
+	for _, vuln := range m_hash_vuln {
+		vuln.Score = utility.GetScore(vuln.Vulnerabilities.SeverityLevel, vuln.Vulnerabilities.ConfidenceLevel, vuln.WarningCount)
+		final_dbVulnerabilities = append(final_dbVulnerabilities, vuln)
+	}
 
 	// 存储在数据库中
 	// 1. 创建数据库
@@ -123,7 +168,7 @@ func (s *Scheduler) Scheduler() {
 		os.Exit(0)
 	}
 	// 3. 存储数据库中
-	count, _, err := vulnerDB.BatchInsertVulnerabilities(unique_dbVulnerabilities)
+	count, _, err := vulnerDB.BatchInsertVulnerabilities(final_dbVulnerabilities)
 	if err != nil {
 		ConsoleLogger.Warning(fmt.Sprintf("数据库插入失败: %s", err))
 	}
@@ -133,10 +178,10 @@ func (s *Scheduler) Scheduler() {
 	switch s.flagResult.OutputFormat {
 	case "json":
 		path, _ := s.fileManager.CreateOutputFormatFile("json")
-		utility.StructsToJSONFile(unique_dbVulnerabilities, path)
+		utility.StructsToJSONFile(final_dbVulnerabilities, path)
 	case "csv":
 		path, _ := s.fileManager.CreateOutputFormatFile("csv")
-		utility.StructsToCSVFile(unique_dbVulnerabilities, path)
+		utility.StructsToCSVFile(final_dbVulnerabilities, path)
 	default:
 		ConsoleLogger.Error(fmt.Sprintf("不支持的输出格式: %s", s.flagResult.OutputFormat))
 	}

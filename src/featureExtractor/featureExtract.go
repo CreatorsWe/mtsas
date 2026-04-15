@@ -1,381 +1,304 @@
 package featureExtractor
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 
-	"github.com/mtsas/common" // 替换为实际的common包路径
-
-	"github.com/odvcencio/gotreesitter"
-	"github.com/odvcencio/gotreesitter/grammars"
+	"github.com/mtsas/common"
+	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/smacker/go-tree-sitter/c"
+	"github.com/smacker/go-tree-sitter/cpp"
+	"github.com/smacker/go-tree-sitter/golang"
+	"github.com/smacker/go-tree-sitter/java"
+	"github.com/smacker/go-tree-sitter/javascript"
+	"github.com/smacker/go-tree-sitter/python"
 )
 
-// -------------------------- 内部数据结构（保持原有逻辑） --------------------------
-// ScopeInfo 仅保留作用域核心定位信息
 type ScopeInfo struct {
-	RawID     string // 原始作用域ID（带序号）
-	Name      string // 作用域名称（无序号）
-	StartLine int    // 作用域起始行
-	EndLine   int    // 作用域结束行
-	ParentID  string // 父作用域RawID
-	ScopeType string // 作用域类型（MODULE/CLASS/FUNC/FILE）
+	RawID     string
+	Name      string
+	StartLine int
+	EndLine   int
+	ParentID  string
+	ScopeType string
 }
 
-// ScopeTable 作用域表（key=RawID，value=ScopeInfo）
 type ScopeTable map[string]ScopeInfo
 
-// -------------------------- 新增核心接口 --------------------------
-// GetFeatureVuln 核心接口：从UnifiedVulnerability生成DbVulnerability
-// 参数：
-//
-//	vuln: 统一漏洞结构体指针
-//
-// 返回：
-//
-//	*common.DbVulnerability: 数据库用漏洞结构体
-//	error: 错误信息
-func GetFeatureVuln(vuln *common.UnifiedVulnerability) (*common.DbVulnerability, error) {
-	// 1. 入参校验
-	if vuln == nil {
-		return nil, fmt.Errorf("UnifiedVulnerability入参不能为空")
-	}
-	if vuln.FilePath == "" {
-		return nil, fmt.Errorf("漏洞文件路径不能为空")
-	}
-	if vuln.Range.StartLine.Int() <= 0 {
-		return nil, fmt.Errorf("漏洞起始行号必须大于0（当前值：%d）", vuln.Range.StartLine.Int())
-	}
-
-	// 2. 读取文件内容
-	source, err := os.ReadFile(vuln.FilePath)
-	if err != nil {
-		return nil, fmt.Errorf("读取文件失败：%w", err)
-	}
-	fileName := filepath.Base(vuln.FilePath)
-	bugPos := vuln.Range.StartLine.Int()
-
-	// 3. 解析语法树
-	langEntry := grammars.DetectLanguage(vuln.FilePath)
-	if langEntry == nil {
-		return nil, fmt.Errorf("不支持的文件类型：%s", filepath.Ext(vuln.FilePath))
-	}
-	lang := langEntry.Language()
-	parser := gotreesitter.NewParser(lang)
-	tree, err := parser.Parse(source)
-	if err != nil {
-		return nil, fmt.Errorf("解析语法树失败：%w", err)
-	}
-	rootNode := tree.RootNode()
-
-	// 4. 提取作用域表
-	scopeTable, err := extractScopes(fileName, rootNode, langEntry.Name, lang, source)
-	if err != nil {
-		return nil, fmt.Errorf("提取作用域失败：%w", err)
-	}
-
-	// 5. 匹配最优作用域
-	optimalScopeRawID, err := matchOptimalScope(bugPos, scopeTable)
-	if err != nil {
-		return nil, fmt.Errorf("匹配最优作用域失败：%w", err)
-	}
-	optimalScope := scopeTable[optimalScopeRawID]
-
-	// 6. 构建ScopeOffsetID（作用域链 > 偏移，不含CWE）
-	scopeID := buildHierarchicalScopeID(fileName, optimalScopeRawID)
-	offset := bugPos - optimalScope.StartLine
-	scopeOffsetID := fmt.Sprintf("%s > %d", scopeID, offset)
-
-	// 7. 计算Hash（需要CWE，无则为空）
-	var hash string
-	if vuln.CWEID != "" && vuln.CWEID != "null" {
-		// 解析CWEID（处理字符串格式，如"CWE-123"或"123"）
-		cwe, err := parseCWEID(vuln.CWEID)
-		if err != nil {
-			return nil, fmt.Errorf("解析CWEID失败：%w", err)
-		}
-		if cwe > 0 {
-			hash = calculateHash(fileName, scopeID, offset, cwe)
-		}
-	}
-
-	// 8. 构建返回结果
-	dbVuln := &common.DbVulnerability{
-		Vulnerabilities: *vuln,
-		Hash:            hash,
-		ScopeOffsetID:   scopeOffsetID,
-		OptimalScope: common.ScopeRange{
-			Start: optimalScope.StartLine,
-			End:   optimalScope.EndLine,
-		},
-		WarningCount: 1,
-	}
-
-	return dbVuln, nil
+type captureInfo struct {
+	node *sitter.Node
+	typ  string
 }
 
-// -------------------------- 内部核心函数（优化补充） --------------------------
-
-// parseCWEID 解析CWEID字符串（支持CWE-XXX、XXX格式）
-func parseCWEID(cweID string) (int, error) {
-	// 移除CWE前缀（如CWE-123 → 123）
-	cweStr := strings.TrimPrefix(strings.TrimSpace(cweID), "CWE-")
-	if cweStr == "" {
-		return 0, fmt.Errorf("CWEID为空")
-	}
-	cwe, err := strconv.Atoi(cweStr)
-	if err != nil {
-		return 0, fmt.Errorf("CWEID格式错误（%s）：%w", cweID, err)
-	}
-	if cwe <= 0 {
-		return 0, fmt.Errorf("CWEID必须大于0（%s）", cweID)
-	}
-	return cwe, nil
+var langMap = map[string]*sitter.Language{
+	".go":   golang.GetLanguage(),
+	".java": java.GetLanguage(),
+	".py":   python.GetLanguage(),
+	".js":   javascript.GetLanguage(),
+	".cpp":  cpp.GetLanguage(),
+	".c":    c.GetLanguage(),
+	".h":    c.GetLanguage(),
+	".hpp":  cpp.GetLanguage(),
 }
 
-// extractScopes 提取作用域表
-func extractScopes(fileName string, root *gotreesitter.Node, lang string, treeSitterLang *gotreesitter.Language, source []byte) (ScopeTable, error) {
-	scopeTable := make(ScopeTable)
-	scopeStack := []string{}
+var queryMap = map[string]string{
+	"go": `
+		(package_declaration) @module
+		(function_declaration) @func
+		(method_declaration) @func
+		(type_declaration) @class
+	`,
+	"java": `
+		(package_declaration) @module
+		(class_declaration) @class
+		(method_declaration) @func
+	`,
+	"python": `
+		(function_definition) @func
+		(class_definition) @class
+	`,
+	"cpp": `
+		(namespace_definition) @module
+		(class_specifier) @class
+		(function_definition) @func
+	`,
+	"c": `
+		(function_definition) @func
+		(struct_specifier) @class
+	`,
+	"javascript": `
+		(function_declaration) @func
+		(class_declaration) @class
+	`,
+}
+
+// 计算漏洞特征： 1. 文件路径 2. 漏洞行 3.
+func GetFeatureVuln(file_path string, line int, cwe int) (string, error) {
+	if file_path == "" || line <= 0 || cwe <= 0 {
+		return "", fmt.Errorf("invalid vuln data")
+	}
+
+	src, err := os.ReadFile(file_path)
+	if err != nil {
+		return "", err
+	}
+	file := filepath.Base(file_path)
+
+	lang, langName, err := getLang(file_path)
+	if err != nil {
+		return "", err
+	}
+
+	parser := sitter.NewParser()
+	parser.SetLanguage(lang)
+	tree, err := parser.ParseCtx(context.Background(), nil, src)
+	if err != nil {
+		return "", err
+	}
+	defer tree.Close()
+
+	scopes, err := extractScopes(file, tree.RootNode(), src, langName)
+	if err != nil {
+		return "", err
+	}
+
+	bestID, err := findBestScope(line, scopes)
+	if err != nil {
+		return "", err
+	}
+	best := scopes[bestID]
+
+	scopeID := buildScopeID(file, bestID)
+	offset := line - best.StartLine
+	scopeOffsetID := fmt.Sprintf("%s@%d", scopeID, offset)
+
+	common.ConsoleLogger.Debug(scopeOffsetID)
+
+	hash := sha256Sum(fmt.Sprintf("%s|%d", scopeOffsetID, cwe))
+
+	return hash, nil
+}
+
+func extractScopes(fileName string, root *sitter.Node, src []byte, lang string) (ScopeTable, error) {
+	st := make(ScopeTable)
+	stack := []string{}
 	counter := make(map[string]int)
 
-	// 初始化文件根作用域
-	rootRawID := fmt.Sprintf("%s[0]", fileName)
-	rootScope := ScopeInfo{
-		RawID:     rootRawID,
+	totalLines := len(strings.Split(string(src), "\n"))
+	rootID := fmt.Sprintf("%s[0]", fileName)
+	st[rootID] = ScopeInfo{
+		RawID:     rootID,
 		Name:      fileName,
 		StartLine: 1,
-		EndLine:   len(strings.Split(string(source), "\n")),
+		EndLine:   totalLines,
 		ParentID:  "",
 		ScopeType: "FILE",
 	}
-	scopeTable[rootRawID] = rootScope
-	scopeStack = append(scopeStack, rootRawID)
+	stack = append(stack, rootID)
 
-	// 深度优先遍历
-	var traverse func(node *gotreesitter.Node)
-	traverse = func(node *gotreesitter.Node) {
-		if node == nil {
-			return
+	var list []captureInfo
+	queryStr := queryMap[lang]
+	lines := strings.Split(queryStr, "\n")
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || !strings.Contains(line, "@") {
+			continue
+		}
+		parts := strings.Split(line, "@")
+		if len(parts) < 2 {
+			continue
+		}
+		typStr := parts[1]
+		typ := ""
+		switch typStr {
+		case "module":
+			typ = "MODULE"
+		case "class":
+			typ = "CLASS"
+		case "func":
+			typ = "FUNC"
+		default:
+			continue
 		}
 
-		nodeType := node.Type(treeSitterLang)
-		normalizedType := normalizeNodeType(nodeType, lang)
-		currentRawID := ""
-
-		if normalizedType != "OTHER" {
-			// 提取作用域名称
-			nodeText := strings.TrimSpace(node.Text(source))
-			scopeName := simplifyScopeName(nodeText, normalizedType, lang)
-			if scopeName == "" {
-				scopeName = "unknown"
+		pattern := strings.TrimSpace(parts[0])
+		pattern = strings.Trim(pattern, "()")
+		walk(root, func(n *sitter.Node) {
+			if n.Type() == pattern {
+				list = append(list, captureInfo{node: n, typ: typ})
 			}
-
-			// 提取行号
-			startLine := int(node.StartPoint().Row) + 1
-			endLine := int(node.EndPoint().Row) + 1
-
-			// 生成RawID
-			parentRawID := scopeStack[len(scopeStack)-1]
-			counterKey := fmt.Sprintf("%s_%s_%s", parentRawID, normalizedType, scopeName)
-			seq := counter[counterKey]
-			counter[counterKey]++
-			currentRawID = fmt.Sprintf("%s > %s[%d]", parentRawID, scopeName, seq)
-
-			// 存储作用域信息
-			scopeTable[currentRawID] = ScopeInfo{
-				RawID:     currentRawID,
-				Name:      scopeName,
-				StartLine: startLine,
-				EndLine:   endLine,
-				ParentID:  parentRawID,
-				ScopeType: normalizedType,
-			}
-
-			scopeStack = append(scopeStack, currentRawID)
-		}
-
-		// 遍历子节点
-		childCount := int(node.ChildCount())
-		for i := range childCount {
-			traverse(node.Child(i))
-		}
-
-		// 弹栈
-		if currentRawID != "" {
-			scopeStack = scopeStack[:len(scopeStack)-1]
-		}
+		})
 	}
 
-	traverse(root)
-	return scopeTable, nil
+	sortList(list)
+	for _, item := range list {
+		n := item.node
+		startLine := int(n.StartPoint().Row) + 1
+		endLine := int(n.EndPoint().Row) + 1
+
+		// ✅ 修复：string 转 []byte
+		name := simplify([]byte(n.Content(src)), item.typ, lang)
+
+		parentID := rootID
+		for i := len(stack) - 1; i >= 0; i-- {
+			s := st[stack[i]]
+			if startLine >= s.StartLine && endLine <= s.EndLine {
+				parentID = s.RawID
+				break
+			}
+		}
+
+		key := fmt.Sprintf("%s_%s_%s", parentID, item.typ, name)
+		seq := counter[key]
+		counter[key]++
+		id := fmt.Sprintf("%s>%s[%d]", parentID, name, seq)
+
+		st[id] = ScopeInfo{
+			RawID:     id,
+			Name:      name,
+			StartLine: startLine,
+			EndLine:   endLine,
+			ParentID:  parentID,
+			ScopeType: item.typ,
+		}
+		stack = append(stack, id)
+	}
+
+	return st, nil
 }
 
-// matchOptimalScope 匹配最优作用域（最细粒度）
-func matchOptimalScope(vulnLine int, scopeTable ScopeTable) (string, error) {
-	var candidates []string
-
-	// 筛选包含漏洞行的作用域
-	for rawID, info := range scopeTable {
-		if vulnLine >= info.StartLine && vulnLine <= info.EndLine {
-			candidates = append(candidates, rawID)
+func sortList(list []captureInfo) {
+	for i := 0; i < len(list); i++ {
+		for j := i + 1; j < len(list); j++ {
+			a := list[i].node.StartPoint()
+			b := list[j].node.StartPoint()
+			if a.Row > b.Row || (a.Row == b.Row && a.Column > b.Column) {
+				list[i], list[j] = list[j], list[i]
+			}
 		}
 	}
-
-	if len(candidates) == 0 {
-		return "", fmt.Errorf("未找到包含漏洞行 %d 的作用域", vulnLine)
-	}
-
-	// 按粒度排序（FUNC > CLASS > MODULE > FILE）
-	granularity := map[string]int{
-		"FUNC":   3,
-		"CLASS":  2,
-		"MODULE": 1,
-		"FILE":   0,
-	}
-	optimalRawID := candidates[0]
-	maxGranularity := granularity[scopeTable[optimalRawID].ScopeType]
-
-	// 选择最细粒度的作用域
-	for _, rawID := range candidates[1:] {
-		level := granularity[scopeTable[rawID].ScopeType]
-		if level > maxGranularity {
-			maxGranularity = level
-			optimalRawID = rawID
-		}
-	}
-
-	return optimalRawID, nil
 }
 
-// buildHierarchicalScopeID 构建层级化作用域ID
-func buildHierarchicalScopeID(fileName string, rawID string) string {
-	parts := strings.Split(rawID, " > ")
+func walk(n *sitter.Node, f func(*sitter.Node)) {
+	f(n)
+	for i := 0; i < int(n.ChildCount()); i++ {
+		walk(n.Child(i), f)
+	}
+}
+
+func getLang(path string) (*sitter.Language, string, error) {
+	ext := filepath.Ext(path)
+	l, ok := langMap[ext]
+	if !ok {
+		return nil, "", fmt.Errorf("unsupported file: %s", path)
+	}
+	var name string
+	switch ext {
+	case ".go":
+		name = "go"
+	case ".java":
+		name = "java"
+	case ".py":
+		name = "python"
+	case ".js":
+		name = "javascript"
+	case ".cpp", ".hpp":
+		name = "cpp"
+	case ".c", ".h":
+		name = "c"
+	}
+	return l, name, nil
+}
+
+func findBestScope(line int, st ScopeTable) (string, error) {
+	var ids []string
+	for id, s := range st {
+		if line >= s.StartLine && line <= s.EndLine {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return "", fmt.Errorf("no scope contains line %d", line)
+	}
+
+	prio := map[string]int{"FUNC": 3, "CLASS": 2, "MODULE": 1, "FILE": 0}
+	best := ids[0]
+	max := prio[st[best].ScopeType]
+	for _, id := range ids[1:] {
+		if p := prio[st[id].ScopeType]; p > max {
+			max = p
+			best = id
+		}
+	}
+	return best, nil
+}
+
+func buildScopeID(file, raw string) string {
+	parts := strings.Split(raw, ">")
+
 	if len(parts) > 0 {
-		parts[0] = fileName
+		parts[0] = file
 	}
-	return strings.Join(parts, " > ")
+	return strings.Join(parts, ">")
 }
 
-// calculateHash 计算哈希值（包含CWE）
-func calculateHash(fileName, scopeID string, offset int, cwe int) string {
-	// 拼接并归一化输入
-	rawInput := fmt.Sprintf("%s > %s > %d > %d", fileName, scopeID, offset, cwe)
-	normalizedInput := strings.ToLower(strings.ReplaceAll(rawInput, " ", ""))
-
-	// SHA256哈希
-	hashBytes := sha256.Sum256([]byte(normalizedInput))
-	return hex.EncodeToString(hashBytes[:])
+func sha256Sum(s string) string {
+	sum := sha256.Sum256([]byte(strings.ToLower(s)))
+	return hex.EncodeToString(sum[:])
 }
 
-// simplifyScopeName 提取简化的作用域名称
-func simplifyScopeName(rawText, scopeType, lang string) string {
-	cleanText := strings.ReplaceAll(rawText, "\n", " ")
-	cleanText = regexp.MustCompile(`\s+`).ReplaceAllString(cleanText, " ")
-
-	switch lang {
-	case "go":
-		if scopeType == "MODULE" {
-			reg := regexp.MustCompile(`package\s+(\w+)`)
-			match := reg.FindStringSubmatch(cleanText)
-			if len(match) > 1 {
-				return match[1]
-			}
-		}
-		if scopeType == "FUNC" {
-			reg := regexp.MustCompile(`func\s+(\w+)\s*\([^)]*\)`)
-			match := reg.FindStringSubmatch(cleanText)
-			if len(match) > 1 {
-				return match[1]
-			}
-		}
-	case "java":
-		if scopeType == "CLASS" {
-			reg := regexp.MustCompile(`class\s+(\w+)\s*\{`)
-			match := reg.FindStringSubmatch(cleanText)
-			if len(match) > 1 {
-				return match[1]
-			}
-		}
-		if scopeType == "FUNC" {
-			reg := regexp.MustCompile(`\s+(\w+)\s*\([^)]*\)\s*\{`)
-			match := reg.FindStringSubmatch(cleanText)
-			if len(match) > 1 {
-				return match[1]
-			}
-		}
-	case "cpp":
-		if scopeType == "MODULE" {
-			reg := regexp.MustCompile(`namespace\s+(\w+)\s*\{`)
-			match := reg.FindStringSubmatch(cleanText)
-			if len(match) > 1 {
-				return match[1]
-			}
-		}
-		if scopeType == "CLASS" {
-			reg := regexp.MustCompile(`class\s+(\w+)\s*\{`)
-			match := reg.FindStringSubmatch(cleanText)
-			if len(match) > 1 {
-				return match[1]
-			}
-		}
-		if scopeType == "FUNC" {
-			reg := regexp.MustCompile(`\s*[\w:]+?\s+(\w+)\s*\([^)]*\)\s*\{`)
-			match := reg.FindStringSubmatch(cleanText)
-			if len(match) > 1 {
-				return match[1]
-			}
-		}
+func simplify(content []byte, typ, lang string) string {
+	s := strings.TrimSpace(string(content))
+	s = regexp.MustCompile(`\s+`).ReplaceAllString(s, " ")
+	if len(s) > 32 {
+		return s[:32]
 	}
-
-	// 兜底处理
-	if len(cleanText) > 20 {
-		return cleanText[:20]
-	}
-	return cleanText
-}
-
-// normalizeNodeType 归一化节点类型
-func normalizeNodeType(nodeType, lang string) string {
-	mapping := map[string]map[string]string{
-		"go": {
-			"package_declaration":   "MODULE",
-			"function_declaration":  "FUNC",
-			"method_declaration":    "FUNC",
-			"type_declaration":      "CLASS",
-			"interface_declaration": "CLASS",
-		},
-		"java": {
-			"package_declaration": "MODULE",
-			"class_declaration":   "CLASS",
-			"method_declaration":  "FUNC",
-		},
-		"python": {
-			"function_definition": "FUNC",
-			"class_definition":    "CLASS",
-		},
-		"c": {
-			"function_definition": "FUNC",
-			"struct_specifier":    "CLASS",
-		},
-		"cpp": {
-			"function_definition":  "FUNC",
-			"class_specifier":      "CLASS",
-			"namespace_definition": "MODULE",
-			"method_definition":    "FUNC",
-		},
-	}
-
-	// 查找并返回归一化后的类型
-	if langMap, ok := mapping[lang]; ok {
-		if t, ok := langMap[nodeType]; ok {
-			return t
-		}
-	}
-	return "OTHER"
+	return s
 }

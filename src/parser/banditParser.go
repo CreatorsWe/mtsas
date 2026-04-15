@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strconv"
 
 	. "github.com/mtsas/common"
 )
@@ -15,16 +14,14 @@ type o_banditIssues struct {
 }
 
 type banditIssues struct {
-	TestID          string        `json:"test_id"`
-	TestName        string        `json:"test_name"`
-	IssueText       string        `json:"issue_text"`
-	Filename        string        `json:"filename"`
-	ColOffset       NullableInt   `json:"col_offset"`
-	EndColOffset    NullableInt   `json:"end_col_offset"`
-	IssueCwe        banditCwe     `json:"issue_cwe"`
-	IssueSeverity   string        `json:"issue_severity"`
-	IssueConfidence string        `json:"issue_confidence"`
-	Linerange       []NullableInt `json:"line_range"`
+	TestID          string    `json:"test_id"`
+	TestName        string    `json:"test_name"`
+	IssueText       string    `json:"issue_text"`
+	Filename        string    `json:"filename"`
+	IssueCwe        banditCwe `json:"issue_cwe"`
+	IssueSeverity   string    `json:"issue_severity"`
+	IssueConfidence string    `json:"issue_confidence"`
+	Line            int       `json:"line_number"`
 }
 
 type banditCwe struct {
@@ -83,32 +80,16 @@ func (b *BanditParser) getConfidenceLevel(confidence string) ConfidenceLevel {
 	}
 }
 
-func (b *BanditParser) getLineRange(line_range []NullableInt) (start_line, end_line NullableInt) {
-	if len(line_range) == 1 {
-		return line_range[0], -1
-	} else if len(line_range) == 2 {
-		return line_range[0], line_range[1]
-	} else {
-		return -1, -1
-	}
-}
-
 func (b *BanditParser) convertIssuesToUnified(result banditIssues) UnifiedVulnerability {
-	start_line, end_line := b.getLineRange(result.Linerange)
 
 	return UnifiedVulnerability{
-		Tool:         "bandit",
-		WarningID:    result.TestID,
-		Category:     "",
-		ShortMessage: result.IssueText,
-		FilePath:     result.Filename,
-		Range: Range{
-			StartLine:   start_line,
-			EndLine:     end_line,
-			StartColumn: result.ColOffset,
-			EndColumn:   result.EndColOffset,
-		},
-		CWEID:           strconv.Itoa(result.IssueCwe.ID),
+		Tool:            "bandit",
+		WarningID:       result.TestID,
+		Category:        "",
+		ShortMessage:    result.IssueText,
+		FilePath:        result.Filename,
+		Line:            result.Line,
+		CWEID:           result.IssueCwe.ID,
 		SeverityLevel:   b.getSeverityLevel(result.IssueSeverity),
 		ConfidenceLevel: b.getConfidenceLevel(result.IssueConfidence),
 	}

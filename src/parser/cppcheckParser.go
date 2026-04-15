@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 
 	. "github.com/mtsas/common"
@@ -12,10 +13,10 @@ import (
 
 type CppcheckParser struct {
 	parseFilePath  string
-	queryInterface func(string, string) (string, error)
+	queryInterface func(string, string) (int, error)
 }
 
-func NewCppcheckParser(parseFilePath string, queryInterface func(string, string) (string, error)) *CppcheckParser {
+func NewCppcheckParser(parseFilePath string, queryInterface func(string, string) (int, error)) *CppcheckParser {
 	return &CppcheckParser{
 		parseFilePath:  parseFilePath,
 		queryInterface: queryInterface,
@@ -24,27 +25,20 @@ func NewCppcheckParser(parseFilePath string, queryInterface func(string, string)
 
 // Cppcheck XML 报告结构定义
 type o_cppcheckIssues struct {
-	XMLName xml.Name         `xml:"results"`
-	Version string           `xml:"version,attr"`
-	Errors  []cppcheckIssues `xml:"errors>error"`
+	Errors []cppcheckIssues `xml:"errors>error"`
 }
 
 type cppcheckIssues struct {
 	ID       string   `xml:"id,attr"`
 	Severity string   `xml:"severity,attr"`
 	Message  string   `xml:"msg,attr"`
-	Verbose  string   `xml:"verbose,attr"`
 	CWE      string   `xml:"cwe,attr"`
-	File0    string   `xml:"file0,attr"`
 	Location location `xml:"location"`
-	Symbol   string   `xml:"symbol"`
 }
 
 type location struct {
-	File   string `xml:"file,attr"`
-	Line   int    `xml:"line,attr"`
-	Column int    `xml:"column,attr"`
-	Info   string `xml:"info,attr"`
+	File string `xml:"file,attr"`
+	Line int    `xml:"line,attr"`
 }
 
 // 将 Cppcheck severity 映射为 unified severity_level
@@ -78,32 +72,25 @@ func (c *CppcheckParser) getConfidenceLevel(severity string) ConfidenceLevel {
 }
 
 // 获取 cwe 字段
-func (c *CppcheckParser) getCWE(errorID string) (string, error) {
-	return c.queryInterface("cppcheck", errorID)
+func (c *CppcheckParser) getCWE(issuesID string) (int, error) {
+	if issuesID == "" {
+		return c.queryInterface("cppcheck", issuesID)
+	} else {
+		return strconv.Atoi(issuesID)
+	}
+
 }
 
 // 转换 Cppcheck 错误为统一漏洞格式
 func (c *CppcheckParser) convertIssuesToUnified(issues cppcheckIssues) (UnifiedVulnerability, error) {
-	// 构建范围信息
-	vulnRange := Range{
-		StartLine:   NullableInt(issues.Location.Line),
-		EndLine:     -1,
-		StartColumn: NullableInt(issues.Location.Column),
-		EndColumn:   -1,
-	}
 
 	// 获取严重级别和置信度
 	severityLevel := c.getSeverityLevel(issues.Severity)
 	confidenceLevel := c.getConfidenceLevel(issues.Severity)
 
-	// 处理 CWE 字段
-	cweID := issues.CWE
-	var err error
-	if cweID == "" {
-		cweID, err = c.getCWE(issues.ID)
-		if err != nil {
-			return UnifiedVulnerability{}, err
-		}
+	cweID, err := c.getCWE(issues.CWE)
+	if err != nil {
+		return UnifiedVulnerability{}, err
 	}
 
 	return UnifiedVulnerability{
@@ -113,7 +100,7 @@ func (c *CppcheckParser) convertIssuesToUnified(issues cppcheckIssues) (UnifiedV
 		ShortMessage:    issues.Message,
 		CWEID:           cweID,
 		FilePath:        issues.Location.File,
-		Range:           vulnRange,
+		Line:            issues.Location.Line,
 		SeverityLevel:   severityLevel,
 		ConfidenceLevel: confidenceLevel,
 	}, nil

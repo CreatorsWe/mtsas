@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	. "github.com/mtsas/common"
@@ -31,7 +32,6 @@ type insiderIssues struct {
 	Class         string  `json:"class"`
 	VulID         string  `json:"vul_id"`
 	Method        string  `json:"method"`
-	Column        int     `json:"column"`
 	Description   string  `json:"description"`
 	ClassMessage  string  `json:"classMessage"`
 	Recomendation string  `json:"recomendation,omitempty"`
@@ -76,7 +76,7 @@ func (i *InsiderParser) getFilePath(class string) string {
 }
 
 // 从 CWE 字符串中提取 CWE ID
-func (i *InsiderParser) getCWEID(cwe string) string {
+func (i *InsiderParser) getCWEID(cwe string) (int, error) {
 	if strings.HasPrefix(cwe, "CWE-") {
 		// 提取 CWE- 后面的数字部分
 		parts := strings.Split(cwe, "-")
@@ -86,21 +86,15 @@ func (i *InsiderParser) getCWEID(cwe string) string {
 			if idx := strings.Index(cweID, " "); idx != -1 {
 				cweID = cweID[:idx]
 			}
-			return cweID
+			if num, err := strconv.Atoi(cweID); err == nil {
+				return num, nil
+			}
 		}
 	}
-	return cwe
+	return -1, nil
 }
 
-func (i *InsiderParser) convertIssuesToUnified(issues insiderIssues) UnifiedVulnerability {
-	// 构建 Range 结构
-	vulnRange := Range{
-		StartLine:   NullableInt(issues.Line),
-		EndLine:     -1,
-		StartColumn: NullableInt(issues.Column),
-		EndColumn:   -1,
-	}
-
+func (i *InsiderParser) convertIssuesToUnified(issues insiderIssues) (UnifiedVulnerability, error) {
 	// 获取严重级别和置信度
 	severityLevel := i.getSeverityLevel(issues.Cvss)
 	confidenceLevel := i.getConfidenceLevel(issues.Cvss)
@@ -109,7 +103,10 @@ func (i *InsiderParser) convertIssuesToUnified(issues insiderIssues) UnifiedVuln
 	filePath := i.getFilePath(issues.Class)
 
 	// 提取 CWE ID
-	cweID := i.getCWEID(issues.Cwe)
+	cweID, err := i.getCWEID(issues.Cwe)
+	if err != nil {
+		return UnifiedVulnerability{}, err
+	}
 
 	return UnifiedVulnerability{
 		Tool:            "insider",
@@ -118,10 +115,10 @@ func (i *InsiderParser) convertIssuesToUnified(issues insiderIssues) UnifiedVuln
 		ShortMessage:    issues.Description,
 		CWEID:           cweID,
 		FilePath:        filePath,
-		Range:           vulnRange,
+		Line:            issues.Line,
 		SeverityLevel:   severityLevel,
 		ConfidenceLevel: confidenceLevel,
-	}
+	}, nil
 }
 
 // readJSONToInsiderReport 读取 JSON 文件并解析为 InsiderReport
@@ -151,7 +148,10 @@ func (i *InsiderParser) Parse() ([]UnifiedVulnerability, error) {
 	// 转换为统一格式
 	var unifiedVulns []UnifiedVulnerability
 	for _, vuln := range insiderissues {
-		unifiedVuln := i.convertIssuesToUnified(vuln)
+		unifiedVuln, err := i.convertIssuesToUnified(vuln)
+		if err != nil {
+			return nil, err
+		}
 		unifiedVulns = append(unifiedVulns, unifiedVuln)
 	}
 

@@ -12,8 +12,8 @@ import (
 
 // 返回数据
 type VulnerData struct {
-	HashVulns      []common.DbVulnerability `json:"hashVulns"`
-	EmptyHashVulns []common.DbVulnerability `json:"emptyHashVulns"`
+	HasCWEVulns   []common.DbVulnerability `json:"hasCWEVulns"`
+	EmptyCWEVulns []common.DbVulnerability `json:"emptyCWEVulns"`
 }
 
 // 查询 number 的数据库结果并返回
@@ -45,22 +45,22 @@ func vulnerDataHandler(numToDbPaths map[int]string) http.HandlerFunc {
 		}
 		defer db.Close()
 
-		emptyhashvulns, err := db.QueryHasEmptyHash()
+		emptycwevulns, err := db.QueryEmptyCWEVulns()
 		if err != nil {
-			http.Error(w, fmt.Sprintf("query data error in %s database", dbPath), http.StatusInternalServerError)
-			common.ConsoleLogger.Error(fmt.Sprintf("query data error in %s database", dbPath))
+			http.Error(w, fmt.Sprintf("query data error in %s database: %s", dbPath, err), http.StatusInternalServerError)
+			common.ConsoleLogger.Error(fmt.Sprintf("query data error in %s database: %s", dbPath, err))
 			return
 		}
-		hashvulns, err := db.QueryHasNonEmptyHash()
+		hascwevulns, err := db.QueryHasCWEVulns()
 		if err != nil {
-			http.Error(w, fmt.Sprintf("query data error in %s database", dbPath), http.StatusInternalServerError)
-			common.ConsoleLogger.Error(fmt.Sprintf("query data error in %s database", dbPath))
+			http.Error(w, fmt.Sprintf("query data error in %s database: %s", dbPath, err), http.StatusInternalServerError)
+			common.ConsoleLogger.Error(fmt.Sprintf("query data error in %s database: %s", dbPath, err))
 			return
 		}
 		// 5. 构建 json 数据。并发送
 		var vulnerDatas VulnerData
-		vulnerDatas.HashVulns = hashvulns
-		vulnerDatas.EmptyHashVulns = emptyhashvulns
+		vulnerDatas.HasCWEVulns = hascwevulns
+		vulnerDatas.EmptyCWEVulns = emptycwevulns
 		_ = json.NewEncoder(w).Encode(vulnerDatas)
 	}
 }

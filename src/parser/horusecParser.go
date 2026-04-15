@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 
 	. "github.com/mtsas/common"
 )
@@ -21,16 +22,15 @@ type o_horusecIssues struct {
 
 // 原 Vulnerabilities 结构体（对应 vulnerabilities 字段的内容）不变
 type horusecIssues struct {
-	VulnerabilityID string      `json:"vulnerabilityID"`
-	Line            NullableInt `json:"line"`
-	Column          NullableInt `json:"column"`
-	Confidence      string      `json:"confidence"`
-	File            string      `json:"file"`
-	Details         string      `json:"details"`
-	SecurityTool    string      `json:"securityTool"`
-	Severity        string      `json:"severity"`
-	Type            string      `json:"type"`
-	RuleID          string      `json:"rule_id"`
+	VulnerabilityID string `json:"vulnerabilityID"`
+	Line            string `json:"line"`
+	Confidence      string `json:"confidence"`
+	File            string `json:"file"`
+	Details         string `json:"details"`
+	SecurityTool    string `json:"securityTool"`
+	Severity        string `json:"severity"`
+	Type            string `json:"type"`
+	RuleID          string `json:"rule_id"`
 }
 
 // HorusecParser 实现Parser接口
@@ -74,30 +74,40 @@ func (h *HorusecParser) getConfidenceLevel(confidence string) ConfidenceLevel {
 	}
 }
 
-func (h *HorusecParser) getCWEID(details string) string {
+func (h *HorusecParser) getCWEID(details string) (int, error) {
 	cweRegex := regexp.MustCompile(`CWE-(\d+)`)
 	if matches := cweRegex.FindStringSubmatch(details); len(matches) > 1 {
-		return matches[1]
+		cweID, err := strconv.Atoi(matches[1])
+		if err != nil {
+			return -1, err
+		}
+		return cweID, nil
 	}
-	return ""
+	return -1, nil
 }
-func (h *HorusecParser) convertIssuesToUnified(issues horusecIssues) UnifiedVulnerability {
+func (h *HorusecParser) convertIssuesToUnified(issues horusecIssues) (UnifiedVulnerability, error) {
+
+	cweID, err := h.getCWEID(issues.Details)
+	if err != nil {
+		return UnifiedVulnerability{}, fmt.Errorf("解析CWEID失败: %v", err)
+	}
+
+	line, err := strconv.Atoi(issues.Line)
+	if err != nil {
+		return UnifiedVulnerability{}, err
+	}
+
 	return UnifiedVulnerability{
-		Tool:         "horusec",
-		WarningID:    issues.RuleID,
-		Category:     issues.Type,
-		ShortMessage: issues.Details,
-		FilePath:     filepath.Join(h.scan_dir, issues.File),
-		Range: Range{
-			StartLine:   issues.Line,
-			EndLine:     -1,
-			StartColumn: issues.Column,
-			EndColumn:   -1,
-		},
-		CWEID:           h.getCWEID(issues.Details),
+		Tool:            "horusec",
+		WarningID:       issues.RuleID,
+		Category:        issues.Type,
+		ShortMessage:    issues.Details,
+		FilePath:        filepath.Join(h.scan_dir, issues.File),
+		Line:            line,
+		CWEID:           cweID,
 		SeverityLevel:   h.getSeverityLevel(issues.Severity),
 		ConfidenceLevel: h.getConfidenceLevel(issues.Confidence),
-	}
+	}, nil
 }
 
 func (h *HorusecParser) readReportToIssues(path string) ([]horusecIssues, error) {
@@ -129,7 +139,11 @@ func (h *HorusecParser) Parse() ([]UnifiedVulnerability, error) {
 	}
 	var unifiedVulnerabilities []UnifiedVulnerability
 	for _, vulnerability := range vulnerabilities {
-		unifiedVulnerabilities = append(unifiedVulnerabilities, h.convertIssuesToUnified(vulnerability))
+		unifiedVuln, err := h.convertIssuesToUnified(vulnerability)
+		if err != nil {
+			return nil, err
+		}
+		unifiedVulnerabilities = append(unifiedVulnerabilities, unifiedVuln)
 	}
 	return unifiedVulnerabilities, nil
 }

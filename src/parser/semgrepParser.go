@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	. "github.com/mtsas/common"
@@ -50,11 +51,6 @@ type semgrepIssues struct {
 		Col    int `json:"col"`
 		Offset int `json:"offset"`
 	} `json:"start"`
-	End struct {
-		Line   int `json:"line"`
-		Col    int `json:"col"`
-		Offset int `json:"offset"`
-	} `json:"end"`
 	Extra struct {
 		Message  string `json:"message"`
 		Fix      string `json:"fix,omitempty"`
@@ -101,9 +97,9 @@ func (s *SemgrepParser) getConfidenceLevel(confidence string) ConfidenceLevel {
 }
 
 // 从 cwe 数组获取 CWE 字段
-func (s *SemgrepParser) getCWEID(cweList []string) string {
+func (s *SemgrepParser) getCWEID(cweList []string) (int, error) {
 	if len(cweList) == 0 {
-		return "" // 返回空字符串，序列化时会变成null
+		return -1, nil // 返回 -1，序列化时会变成 null
 	}
 
 	// 取第一个CWE ID
@@ -117,29 +113,26 @@ func (s *SemgrepParser) getCWEID(cweList []string) string {
 			cweID := strings.TrimPrefix(parts[0], "CWE-")
 			// 去掉可能的分隔符
 			cweID = strings.TrimSuffix(cweID, ":")
-			return cweID
+			return strconv.Atoi(cweID)
 		}
 	}
 
-	return cwe
+	return strconv.Atoi(cwe)
 }
 
 // ConvertSemgrepIssueToUnified 将 SemgrepIssue 转换为统一漏洞结构体
-func (s *SemgrepParser) convertIssuesToUnified(issue semgrepIssues) UnifiedVulnerability {
+func (s *SemgrepParser) convertIssuesToUnified(issue semgrepIssues) (UnifiedVulnerability, error) {
 	// 构建Range结构
-	vulnRange := Range{
-		StartLine:   NullableInt(issue.Start.Line),
-		EndLine:     NullableInt(issue.End.Line),
-		StartColumn: NullableInt(issue.Start.Col),
-		EndColumn:   NullableInt(issue.End.Col),
-	}
 
 	// 获取严重级别和置信度
 	severityLevel := s.getSeverityLevel(issue.Extra.Severity)
 	confidenceLevel := s.getConfidenceLevel(issue.Extra.Metadata.Confidence)
 
 	// 获取CWE ID
-	cweID := s.getCWEID(issue.Extra.Metadata.Cwe)
+	cweID, err := s.getCWEID(issue.Extra.Metadata.Cwe)
+	if err != nil {
+		return UnifiedVulnerability{}, err
+	}
 
 	return UnifiedVulnerability{
 		Tool:            "semgrep",
@@ -148,10 +141,10 @@ func (s *SemgrepParser) convertIssuesToUnified(issue semgrepIssues) UnifiedVulne
 		ShortMessage:    issue.Extra.Message,
 		CWEID:           cweID,
 		FilePath:        issue.Path,
-		Range:           vulnRange,
+		Line:            issue.Start.Line,
 		SeverityLevel:   severityLevel,
 		ConfidenceLevel: confidenceLevel,
-	}
+	}, nil
 }
 
 // readJsonToSemgrepReport 读取JSON文件并解析为SemgrepReport
@@ -180,7 +173,10 @@ func (s *SemgrepParser) Parse() ([]UnifiedVulnerability, error) {
 	// 转换每个结果为统一格式
 	var unifiedVulns []UnifiedVulnerability
 	for _, issue := range report {
-		unifiedVuln := s.convertIssuesToUnified(issue)
+		unifiedVuln, err := s.convertIssuesToUnified(issue)
+		if err != nil {
+			return nil, err
+		}
 		unifiedVulns = append(unifiedVulns, unifiedVuln)
 	}
 
