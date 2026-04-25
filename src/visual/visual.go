@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"filepath"
 
 	"github.com/mtsas/common"
 )
@@ -13,11 +14,13 @@ import (
 //	mtsasPath: .mtsas 根目录路径
 //	projectName: 项目名称（如 demo）
 //	返回值: 服务启动错误
-func Visual(mtsasPath, projectName string) error {
+func Visual(mtsasDir, projectName string) error {
 	// 1. 参数校验
-	if mtsasPath == "" || projectName == "" {
+	if mtsasDir == "" || projectName == "" {
 		return errors.New("mtsasPath 和 projectName 不能为空")
 	}
+
+	mtsasPath := filepath.join(mtsasDir, ".mtsas");
 
 	numToTimestamps, numToDbPaths, err := readTimestamps(mtsasPath, projectName)
 
