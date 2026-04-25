@@ -131,7 +131,7 @@ func (fp *FlagParser) parseVisualFlags() (*VisualFlag, error) {
 
 	// 定义 visual 子命令的参数
 	var (
-		outputDir = visualCmd.String("output-dir", ".", " .mtsas 目录，默认为 .")
+		outputDir = visualCmd.String("output-dir", ".", " .mtsas 所在目录，默认为 .")
 		name      = visualCmd.String("name", "", "项目名称（必须）")
 	)
 
