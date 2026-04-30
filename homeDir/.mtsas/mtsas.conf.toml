@@ -76,7 +76,7 @@ args = [
 [insider]  # 不能指定生成 json 文件的路径，所以只能在指定目录调用工具
 name = "insider"
 version = "3.0.0"
-path = '/home/PatrickStar/Downloads/github.project/mtsas/scan-tools/insider'
+path = '/home/PatrickStar/Downloads/mtsas/scan-tools/insider'
 supportedLanguages = ["java", "kotlin", "javascript", "c#"]
 args = [
     "-tech", "{language_type}",
@@ -100,7 +100,7 @@ args = [
 
 
 [cwe_mapping]
-path='/home/PatrickStar/Downloads/github.project/mtsas/database/cwe_mapping.sqlite3'
+path='/home/PatrickStar/Downloads/mtsas/database/cwe_mapping.sqlite3'
 maps = [
     {toolName = "pylint", tableName = "pylint_mapping"},
     {toolName = "cppcheck", tableName = "cppcheck_mapping"},

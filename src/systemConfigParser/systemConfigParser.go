@@ -3,6 +3,7 @@ package systemConfigParser
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	. "github.com/mtsas/common"
@@ -58,8 +59,12 @@ type SystemConfigParser struct {
 }
 
 func NewSystemConfigParser() *SystemConfigParser {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
 	return &SystemConfigParser{
-		systemConfigPath: `/home/PatrickStar/Downloads/github.project/mtsas/mtsas.conf.toml`,
+		systemConfigPath: filepath.Join(homeDir, ".mtsas", "mtsas.conf.toml"),
 	}
 }
 

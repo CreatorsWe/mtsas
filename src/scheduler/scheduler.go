@@ -296,7 +296,7 @@ func (s *Scheduler) initExecutorAndParser(toolName string, paths []string) (Exec
 			return nil, nil, err
 		}
 		report_path := insiderExecutor.GetReportPath()
-		insiderParser := parser.NewInsiderParser(report_path)
+		insiderParser := parser.NewInsiderParser(report_path, s.flagResult.ScanDir)
 
 		return insiderExecutor, insiderParser, nil
 	case "insider:javascript":
@@ -306,7 +306,7 @@ func (s *Scheduler) initExecutorAndParser(toolName string, paths []string) (Exec
 			return nil, nil, err
 		}
 		report_path := insiderExecutor.GetReportPath()
-		insiderParser := parser.NewInsiderParser(report_path)
+		insiderParser := parser.NewInsiderParser(report_path, s.flagResult.ScanDir)
 
 		return insiderExecutor, insiderParser, nil
 	case "insider:csharp":
@@ -316,7 +316,7 @@ func (s *Scheduler) initExecutorAndParser(toolName string, paths []string) (Exec
 			return nil, nil, err
 		}
 		report_path := insiderExecutor.GetReportPath()
-		insiderParser := parser.NewInsiderParser(report_path)
+		insiderParser := parser.NewInsiderParser(report_path, s.flagResult.ScanDir)
 
 		return insiderExecutor, insiderParser, nil
 	case "cppcheck":

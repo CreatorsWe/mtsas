@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -12,11 +13,13 @@ import (
 
 type InsiderParser struct {
 	parseFilePath string
+	scan_dir      string
 }
 
-func NewInsiderParser(parseFilePath string) *InsiderParser {
+func NewInsiderParser(parseFilePath string, scan_dir string) *InsiderParser {
 	return &InsiderParser{
 		parseFilePath: parseFilePath,
+		scan_dir:      scan_dir,
 	}
 }
 
@@ -66,13 +69,13 @@ func (i *InsiderParser) getConfidenceLevel(cvss float64) ConfidenceLevel {
 }
 
 // 从 class 字段提取文件路径
-func (i *InsiderParser) getFilePath(class string) string {
+func (i *InsiderParser) getFilePath(classMessage string) string {
 	// class 格式示例: "Demo1.java (16:20)"
-	parts := strings.Split(class, " (")
+	parts := strings.Split(classMessage, " (")
 	if len(parts) > 0 {
 		return parts[0]
 	}
-	return class
+	return classMessage
 }
 
 // 从 CWE 字符串中提取 CWE ID
@@ -99,9 +102,6 @@ func (i *InsiderParser) convertIssuesToUnified(issues insiderIssues) (UnifiedVul
 	severityLevel := i.getSeverityLevel(issues.Cvss)
 	confidenceLevel := i.getConfidenceLevel(issues.Cvss)
 
-	// 提取文件路径和模块
-	filePath := i.getFilePath(issues.Class)
-
 	// 提取 CWE ID
 	cweID, err := i.getCWEID(issues.Cwe)
 	if err != nil {
@@ -114,7 +114,7 @@ func (i *InsiderParser) convertIssuesToUnified(issues insiderIssues) (UnifiedVul
 		Category:        "",
 		ShortMessage:    issues.Description,
 		CWEID:           cweID,
-		FilePath:        filePath,
+		FilePath:        filepath.Join(i.scan_dir, i.getFilePath(issues.ClassMessage)),
 		Line:            issues.Line,
 		SeverityLevel:   severityLevel,
 		ConfidenceLevel: confidenceLevel,

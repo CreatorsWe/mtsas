@@ -4,7 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"filepath"
+	"os"
+	"path/filepath"
 
 	"github.com/mtsas/common"
 )
@@ -20,7 +21,7 @@ func Visual(mtsasDir, projectName string) error {
 		return errors.New("mtsasPath 和 projectName 不能为空")
 	}
 
-	mtsasPath := filepath.join(mtsasDir, ".mtsas");
+	mtsasPath := filepath.Join(mtsasDir, ".mtsas")
 
 	numToTimestamps, numToDbPaths, err := readTimestamps(mtsasPath, projectName)
 
@@ -28,7 +29,12 @@ func Visual(mtsasDir, projectName string) error {
 		return fmt.Errorf("visual error: %s", err)
 	}
 
-	const STATIC_PATH = `/home/PatrickStar/Downloads/github.project/mtsas/static/dist`
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+
+	STATIC_PATH := filepath.Join(homeDir, ".mtsas", "static")
 
 	// 2. 注册路由
 	http.HandleFunc(fmt.Sprintf("/%s/index", projectName), indexPageHandler(STATIC_PATH))
