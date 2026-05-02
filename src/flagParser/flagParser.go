@@ -84,6 +84,12 @@ func (fp *FlagParser) parseScanFlags() (*ScanFlag, error) {
 		return nil, fmt.Errorf("错误: 扫描路径必须是目录: %s", scanDir)
 	}
 
+	absScanDir, err := filepath.Abs(scanDir)
+
+	if err != nil {
+		return nil, fmt.Errorf("错误: 无法解析输出目录路径: %v", err)
+	}
+
 	// 处理排除目录
 	var excludedDirs []string
 	if *excludeDirs != "" {
@@ -116,7 +122,7 @@ func (fp *FlagParser) parseScanFlags() (*ScanFlag, error) {
 		ProjectName:  *projectName,
 		OutputDir:    absOutputDir,
 		OutputFormat: *outputFormat,
-		ScanDir:      scanDir,
+		ScanDir:      absScanDir,
 		ScanFiles:    scanFiles,
 		Exclude:      excludedDirs,
 		IsQuiet:      *isQuiet,
